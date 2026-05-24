@@ -1,0 +1,35 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/upgrade/upgrade_item.gd" id="1_item"]
+
+[node name="UpgradeItem" type="PanelContainer"]
+script = ExtResource("1_item")
+
+[node name="HBox" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="NameLabel" type="Label" parent="HBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Upgrade"
+
+[node name="CostLabel" type="Label" parent="HBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "$0"
+
+[node name="CountLabel" type="Label" parent="HBox"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(24, 0)
+text = ""
+horizontal_alignment = 1
+
+[node name="BuyButton" type="Button" parent="HBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Buy"
+
+[connection signal="pressed" from="HBox/BuyButton" to="." method="_on_buy_button_pressed"]

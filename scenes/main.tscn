@@ -1,0 +1,337 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud/view_sub_bar.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/ui/hud/comment_panel.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/ui/hud/stat_panel.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/main.gd" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/ui/edit_mode/edit_mode.tscn" id="5"]
+
+[node name="Main" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("4")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="HBoxMain" type="HBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LeftColumn" type="VBoxContainer" parent="MarginContainer/HBoxMain"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 3.2
+theme_override_constants/separation = 6
+
+[node name="StreamScreen" type="Panel" parent="MarginContainer/HBoxMain/LeftColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+size_flags_stretch_ratio = 2.0
+
+[node name="ScreenLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/StreamScreen"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ViewSubBar" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 48)
+theme_override_constants/separation = 6
+script = ExtResource("1")
+
+[node name="ViewPanel" type="Panel" parent="MarginContainer/HBoxMain/LeftColumn/ViewSubBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ViewLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/ViewSubBar/ViewPanel"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_right = -8.0
+text = ""
+vertical_alignment = 1
+
+[node name="SubPanel" type="Panel" parent="MarginContainer/HBoxMain/LeftColumn/ViewSubBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SubLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/ViewSubBar/SubPanel"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_right = -8.0
+text = ""
+vertical_alignment = 1
+
+[node name="UpgradeArea" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+
+[node name="UpgradeList" type="Panel" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="UpgradeVBox" type="VBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 8.0
+offset_right = -10.0
+offset_bottom = -8.0
+theme_override_constants/separation = 6
+
+[node name="HeaderRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="UpgradeHeaderLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="CostHeaderLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/HeaderRow"]
+layout_mode = 2
+text = ""
+
+[node name="FriendViewRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="FriendViewName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/FriendViewRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="FriendViewCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/FriendViewRow"]
+layout_mode = 2
+text = ""
+
+[node name="ReactHandRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="ReactHandName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ReactHandRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ReactHandCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ReactHandRow"]
+layout_mode = 2
+text = ""
+
+[node name="ReactBotRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="ReactBotName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ReactBotRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ReactBotCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ReactBotRow"]
+layout_mode = 2
+text = ""
+
+[node name="ViewBotRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="ViewBotName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ViewBotRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ViewBotCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ViewBotRow"]
+layout_mode = 2
+text = ""
+
+[node name="AdRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="AdName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/AdRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="AdCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/AdRow"]
+layout_mode = 2
+text = ""
+
+[node name="PassiveSeparator" type="HSeparator" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="PassiveHeaderRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="PassiveLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/PassiveHeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="PassiveCostLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/PassiveHeaderRow"]
+layout_mode = 2
+text = ""
+
+[node name="AlgorithmRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="AlgorithmName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/AlgorithmRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="AlgorithmCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/AlgorithmRow"]
+layout_mode = 2
+text = ""
+
+[node name="BotIntelRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="BotIntelName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/BotIntelRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="BotIntelCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/BotIntelRow"]
+layout_mode = 2
+text = ""
+
+[node name="ContentRow" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox"]
+layout_mode = 2
+
+[node name="ContentName" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ContentRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ContentCost" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeList/UpgradeVBox/ContentRow"]
+layout_mode = 2
+text = ""
+
+[node name="UpgradeVisual" type="Panel" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="UpgradeVisualLabel" type="Label" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeVisual"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="VisualScroll" type="ScrollContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeVisual"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 28.0
+
+[node name="VisualContainer" type="HBoxContainer" parent="MarginContainer/HBoxMain/LeftColumn/UpgradeArea/UpgradeVisual/VisualScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="CenterTitle" type="VBoxContainer" parent="MarginContainer/HBoxMain"]
+layout_mode = 2
+custom_minimum_size = Vector2(160, 0)
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/HBoxMain/CenterTitle"]
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+
+[node name="RightColumn" type="VBoxContainer" parent="MarginContainer/HBoxMain"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.0
+theme_override_constants/separation = 8
+
+[node name="CommentPanel" type="PanelContainer" parent="MarginContainer/HBoxMain/RightColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+script = ExtResource("2")
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/HBoxMain/RightColumn/CommentPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+follow_focus = true
+
+[node name="CommentList" type="VBoxContainer" parent="MarginContainer/HBoxMain/RightColumn/CommentPanel/ScrollContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="StatPanel" type="PanelContainer" parent="MarginContainer/HBoxMain/RightColumn"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 220)
+script = ExtResource("3")
+
+[node name="StatVBox" type="VBoxContainer" parent="MarginContainer/HBoxMain/RightColumn/StatPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="StatTitleLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
+layout_mode = 2
+text = "Stat"
+horizontal_alignment = 1
+
+[node name="GoalLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Goal: 100 Views"
+
+[node name="CashLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Cash: $0.00"
+
+[node name="RunLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Run: 1"
+
+[node name="TimeLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Time: 00:00"
+
+[node name="EditMode" parent="." instance=ExtResource("5")]
+
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/ScreenBtn" to="EditMode" method="_set_group" binds=["screen"]]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/UpgradeBtn" to="EditMode" method="_set_group" binds=["upgrade"]]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/VisualBtn" to="EditMode" method="_set_group" binds=["visual"]]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/StatBtn" to="EditMode" method="_set_group" binds=["stat"]]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/SaveBtn" to="EditMode" method="_on_save_pressed"]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/UploadBtn" to="EditMode" method="_on_upload_pressed"]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/DeleteBtn" to="EditMode" method="_on_delete_pressed"]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TransformPanel/VBox/ApplyBtn" to="EditMode/SidePanel/VBox/TransformPanel" method="_on_apply_pressed"]
+[connection signal="apply_requested" from="EditMode/SidePanel/VBox/TransformPanel" to="EditMode" method="_on_transform_apply"]
+[connection signal="files_selected" from="EditMode/FileDialog" to="EditMode" method="_on_file_dialog_files_selected"]
+[connection signal="pressed" from="EditMode/UnsavedDialog/VBox/BtnRow/SaveBtn" to="EditMode" method="_on_dialog_save"]
+[connection signal="pressed" from="EditMode/UnsavedDialog/VBox/BtnRow/DiscardBtn" to="EditMode" method="_on_dialog_discard"]
+[connection signal="pressed" from="EditMode/UnsavedDialog/VBox/BtnRow/CancelBtn" to="EditMode" method="_on_dialog_cancel"]

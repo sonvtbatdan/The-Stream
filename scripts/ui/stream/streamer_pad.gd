@@ -18,10 +18,6 @@ var _transitioning: bool = false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE  # let arena clicks pass through outside Frame
-	anchor_left = 0.0
-	anchor_top = 0.0
-	anchor_right = 1.0
-	anchor_bottom = 1.0
 
 	# Build 9 empty cells.
 	for i in 9:
@@ -30,7 +26,7 @@ func _ready() -> void:
 		_cells.append(cell)
 		_grid.add_child(cell)
 
-	_layout_for_state()
+	call_deferred("_layout_for_state")
 
 func _layout_for_state() -> void:
 	var target: Rect2 = _target_rect(_state)
@@ -47,8 +43,11 @@ func _target_rect(state: int) -> Rect2:
 	return Rect2((parent_size - EXPANDED_SIZE) * 0.5, EXPANDED_SIZE)
 
 func _resize_cells() -> void:
-	# Grid is 3 columns. Cell side = (frame_size - 4 * gutter) / 3.
-	var side: float = (_frame.size.x - CELL_GUTTER * 4.0) / 3.0
+	# Grid drawable width = _frame.size.x - 16 (.tscn insets the Grid by 8px
+	# on each side). With 3 columns and 2 interior gutters of CELL_GUTTER:
+	#   3 * side + 2 * CELL_GUTTER = _frame.size.x - 16
+	#   => side = (_frame.size.x - 16 - 2 * CELL_GUTTER) / 3
+	var side: float = (_frame.size.x - 16.0 - CELL_GUTTER * 2.0) / 3.0
 	for cell in _cells:
 		(cell as Control).custom_minimum_size = Vector2(side, side)
 	_grid.add_theme_constant_override("h_separation", int(CELL_GUTTER))

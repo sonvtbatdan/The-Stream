@@ -261,9 +261,10 @@ func _on_canvas_object_clicked(obj: EditableObjectNode) -> void:
 func _handle_gameplay_click(obj: EditableObjectNode) -> void:
 	match obj.group_id:
 		"screen":
-			# View income is granted by editable_object._handle_gameplay_input
-			# when the clicked object is the "view" image. The middleman here
-			# only triggers the surrounding-screen-objects pop animation.
+			# Any click on a screen-group sprite (Girl, Screen, view, sub, etc.)
+			# grants click_power views. Frame sprites are mouse_filter = IGNORE
+			# in gameplay mode so they don't reach here at all.
+			GameManager.on_view_clicked()
 			_animate_screen_objects()
 		"upgrade":
 			var upgrade_id := obj.source_path.get_file().get_basename().to_lower()

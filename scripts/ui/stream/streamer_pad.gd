@@ -9,7 +9,7 @@ const CELL_GUTTER := 8.0
 const ANIM_DURATION := 0.15
 
 var _state: int = State.DOCKED
-var _cells: Array = []          # ToolCell controls in slot order (0..8)
+var _cells: Array[ToolCell] = []   # ToolCell controls in slot order (0..8)
 var _focused_index: int = -1
 var _transitioning: bool = false
 
@@ -76,11 +76,10 @@ func _resize_cells() -> void:
 
 func _process(_delta: float) -> void:
 	for cell in _cells:
-		var c: ToolCell = cell
-		if c.tool_id == "":
+		if cell.tool_id == "":
 			continue
-		var progress: float = Upgrades.get_cooldown_progress(c.tool_id)
-		c.update_cooldown(progress)
+		var progress: float = Upgrades.get_cooldown_progress(cell.tool_id)
+		cell.update_cooldown(progress)
 
 
 # ------------------------------------------------------------------
@@ -114,6 +113,7 @@ class ToolCell extends Control:
 		if tool_id == id:
 			return
 		tool_id = id
+		_cooldown_progress = 0.0
 		_refresh_label()
 		queue_redraw()
 
@@ -150,10 +150,14 @@ class ToolCell extends Control:
 		var radius: float = size.length() * 0.6
 		var steps: int = 32
 		var sweep: float = _cooldown_progress * TAU
-		var pts := PackedVector2Array()
-		pts.append(center)
-		for i in steps + 1:
-			var t: float = float(i) / float(steps)
-			var ang: float = -PI * 0.5 + sweep * t  # start at 12 o'clock, sweep clockwise
-			pts.append(center + Vector2(cos(ang), sin(ang)) * radius)
-		draw_colored_polygon(pts, Color(0, 0, 0, 0.55))
+		var color := Color(0, 0, 0, 0.55)
+		# Build the fan as individual triangles so each is convex —
+		# draw_colored_polygon is not reliable on concave polygons.
+		var step_angle: float = sweep / float(steps)
+		var start_angle: float = -PI * 0.5
+		var prev: Vector2 = center + Vector2(cos(start_angle), sin(start_angle)) * radius
+		for i in range(1, steps + 1):
+			var ang: float = start_angle + step_angle * float(i)
+			var next: Vector2 = center + Vector2(cos(ang), sin(ang)) * radius
+			draw_colored_polygon(PackedVector2Array([center, prev, next]), color)
+			prev = next

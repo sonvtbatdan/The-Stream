@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(if \\(-not \\(Test-Path c:/Users/minhv/The-Stream/docs/superpowers/plans\\)\\) { New-Item -ItemType Directory -Force -Path c:/Users/minhv/The-Stream/docs/superpowers/plans | Out-Null }; \"ok\")",
+      "Bash(godot --headless --check-only --path . --quit)",
+      "Bash(echo \"EXITCODE=$?\")",
+      "Bash(godot --headless --path . --script scripts/autoload/upgrades.gd --check-only)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git status *)",
+      "Bash(git -C \"c:/Users/minhv/The-Stream\" show 514243f --stat)",
+      "Bash(git -C \"c:/Users/minhv/The-Stream\" show 514243f -- scripts/autoload/upgrades.gd)",
+      "Bash(git -C \"c:/Users/minhv/The-Stream\" log --oneline -5)",
+      "PowerShell($cmd = Get-Command godot -ErrorAction SilentlyContinue; if \\($cmd\\) { godot --headless --check-only --path . --quit; \"EXIT_CODE=$LASTEXITCODE\" } else { \"godot not on PATH; skipping check\" })",
+      "PowerShell(git add scripts/autoload/upgrades.gd)",
+      "PowerShell($p = Start-Process -FilePath \"godot\" -ArgumentList \"--headless\",\"--check-only\",\"--path\",\".\",\"--quit\" -NoNewWindow -Wait -PassThru; \"EXIT_CODE=$\\($p.ExitCode\\)\")",
+      "PowerShell(git commit -m \"fix\\(upgrades\\): tighten _process typing and start_cooldown edge case\")",
+      "Bash(git -C /c/Users/minhv/The-Stream show 204dc00 -- scripts/autoload/upgrades.gd)",
+      "Bash(git -C \"c:\\\\Users\\\\minhv\\\\The-Stream\" diff scripts/ui/stream/stream_arena.gd)",
+      "Bash(git -C \"c:\\\\Users\\\\minhv\\\\The-Stream\" status scripts/ui/stream/stream_arena.gd)",
+      "Bash(git -C /c/Users/minhv/The-Stream show d4bccdd -- scripts/ui/stream/stream_arena.gd)",
+      "PowerShell($godot = \\(Get-Command godot -ErrorAction SilentlyContinue\\); if \\($godot\\) { Write-Output \"Godot found at: $\\($godot.Source\\)\" } else { Write-Output \"godot not on PATH; trying common install locations\"; $candidates = @\\('C:\\\\Program Files\\\\Godot\\\\godot.exe','C:\\\\Program Files \\(x86\\)\\\\Godot\\\\godot.exe', \"$env:LOCALAPPDATA\\\\Godot\\\\godot.exe\", \"$env:USERPROFILE\\\\scoop\\\\apps\\\\godot\\\\current\\\\godot.exe\"\\); foreach \\($c in $candidates\\) { if \\(Test-Path $c\\) { Write-Output \"Found: $c\" } } })",
+      "PowerShell(& 'C:\\\\Users\\\\minhv\\\\Downloads\\\\Godot_v4.6.2-stable_win64.exe\\\\godot.exe' --headless --check-only --path 'c:\\\\Users\\\\minhv\\\\The-Stream' --quit; Write-Output \"EXIT=$LASTEXITCODE\")",
+      "PowerShell(& 'C:\\\\Users\\\\minhv\\\\Downloads\\\\Godot_v4.6.2-stable_win64.exe\\\\godot.exe' --headless --path 'c:\\\\Users\\\\minhv\\\\The-Stream' --check-only --script 'res://scripts/ui/stream/streamer_pad.gd'; Write-Output \"EXIT=$LASTEXITCODE\")",
+      "PowerShell($p = Start-Process -FilePath 'C:\\\\Users\\\\minhv\\\\Downloads\\\\Godot_v4.6.2-stable_win64.exe\\\\godot.exe' -ArgumentList '--headless','--path','c:\\\\Users\\\\minhv\\\\The-Stream','--check-only','--script','res://scripts/ui/stream/streamer_pad.gd' -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stdout.txt' -RedirectStandardError 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stderr.txt'; Write-Output \"ExitCode=$\\($p.ExitCode\\)\"; Write-Output \"--- STDOUT ---\"; Get-Content 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stdout.txt' -Raw; Write-Output \"--- STDERR ---\"; Get-Content 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stderr.txt' -Raw)",
+      "PowerShell($p = Start-Process -FilePath 'C:\\\\Users\\\\minhv\\\\Downloads\\\\Godot_v4.6.2-stable_win64.exe\\\\godot.exe' -ArgumentList '--headless','--path','c:\\\\Users\\\\minhv\\\\The-Stream','--quit-after','2' -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stdout.txt' -RedirectStandardError 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stderr.txt'; Write-Output \"ExitCode=$\\($p.ExitCode\\)\"; Write-Output \"--- STDOUT ---\"; Get-Content 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stdout.txt' -Raw; Write-Output \"--- STDERR ---\"; Get-Content 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.parse_stderr.txt' -Raw)",
+      "PowerShell($p = Start-Process -FilePath 'C:\\\\Users\\\\minhv\\\\Downloads\\\\Godot_v4.6.2-stable_win64.exe\\\\godot.exe' -ArgumentList '--headless','--path','c:\\\\Users\\\\minhv\\\\The-Stream','--editor','--quit' -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.import_out.txt' -RedirectStandardError 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.import_err.txt'; Write-Output \"ExitCode=$\\($p.ExitCode\\)\"; Write-Output \"--- STDERR \\(tail\\) ---\"; Get-Content 'c:\\\\Users\\\\minhv\\\\The-Stream\\\\.import_err.txt' -Tail 30)",
+      "PowerShell(godot --headless --check-only --path . --quit; \"ExitCode: $LASTEXITCODE\")",
+      "Bash(git -C \"C:/Users/minhv/The-Stream\" log -1 --format=%H 0aa8e6e)",
+      "Bash(git -C \"C:/Users/minhv/The-Stream\" add scripts/ui/stream/streamer_pad.gd)",
+      "Bash(git -C \"C:/Users/minhv/The-Stream\" commit -m \"fix\\(pad\\): defer layout, drop redundant anchors, clarify cell math\")",
+      "Bash(git -C \"C:/Users/minhv/The-Stream\" log -1 --format=\"%H%n%P%n%s\")",
+      "PowerShell($out = & godot --headless --check-only --path . --quit 2>&1; $ec = $LASTEXITCODE; Write-Output \"EXIT=$ec\"; $out | ForEach-Object { Write-Output $_ })",
+      "WebFetch(domain:docs.godotengine.org)",
+      "Bash(git -C \"c:/Users/minhv/The-Stream\" diff scripts/ui/stream/streamer_pad.gd)"
+    ]
+  }
+}

@@ -1,8 +1,24 @@
 extends CanvasLayer
 
+signal opened_changed(is_open: bool)
+
 const EditableObject := preload("res://scenes/ui/edit_mode/editable_object.tscn")
 const LAYOUT_PATH := "user://layout.cfg"
 const GROUPS := ["screen", "upgrade", "visual", "stat"]
+
+# Filenames (lowercased) that the StreamArena now owns — never auto-place them
+# as screen-group sprites. Keyed by group → set of basenames.
+const SOURCE_BLOCKLIST := {
+	"screen": { "girl": true, "screen": true, "view": true, "sub": true, "eye": true, "like": true, "dislike": true, "viewer": true },
+}
+
+# Auto-load layout per group: where new sprites land if no saved layout overrides them.
+const GROUP_DEFAULTS := {
+	"screen":  { "size": 200.0, "origin": Vector2(20.0, 20.0),    "spacing": Vector2(210.0, 210.0), "cols": 4 },
+	"upgrade": { "size": 80.0,  "origin": Vector2(20.0, 525.0),   "spacing": Vector2(88.0, 88.0),   "cols": 9 },
+	"visual":  { "size": 80.0,  "origin": Vector2(20.0, 620.0),   "spacing": Vector2(88.0, 88.0),   "cols": 9 },
+	"stat":    { "size": 60.0,  "origin": Vector2(1030.0, 510.0), "spacing": Vector2(70.0, 70.0),   "cols": 3 },
+}
 
 @onready var objects_container: Control = $ObjectsContainer
 @onready var dim_overlay: ColorRect = $DimOverlay
@@ -27,14 +43,45 @@ var _selected_objects: Array = []
 
 var _undo_stack: Array[Dictionary] = []
 var _placed: Dictionary = {}  # group -> Array[EditableObjectNode]
+# Paths the user has explicitly deleted in F4. Persisted in layout.cfg under
+# section [deleted] so _auto_load_group can skip them on the next launch.
+# Re-uploading or undoing a delete clears the flag.
+var _deleted_paths: Dictionary = {}  # group -> Dictionary(path -> true)
+
+# Per-group master width. Only groups present here get an "All Icons" row in the list
+# and have their sprites auto-sized to this width (height derived per-sprite from aspect).
+var _all_icon_size: Dictionary = {}
+var _all_icon_selected := false
 
 func _ready() -> void:
 	layer = 10
 	for g in GROUPS:
 		_placed[g] = []
+		_deleted_paths[g] = {}
+	_all_icon_size["upgrade"] = float(GROUP_DEFAULTS["upgrade"]["size"])
 	object_list_panel.row_selected.connect(_on_list_row_selected)
 	object_list_panel.file_dropped.connect(_on_file_dropped)
-	transform_panel.connect("transform_changed", _on_transform_live)
+	object_list_panel.all_icon_selected.connect(_on_all_icon_selected)
+	transform_panel.transform_changed.connect(_on_transform_live)
+	transform_panel.apply_requested.connect(_on_transform_apply)
+	transform_panel.all_icon_size_changed.connect(_on_all_icon_size_changed)
+
+	btn_screen.pressed.connect(_set_group.bind("screen"))
+	btn_upgrade.pressed.connect(_set_group.bind("upgrade"))
+	btn_visual.pressed.connect(_set_group.bind("visual"))
+	btn_stat.pressed.connect(_set_group.bind("stat"))
+	btn_delete.pressed.connect(_on_delete_pressed)
+	$SidePanel/VBox/TopHBox/ButtonsColumn/SaveBtn.pressed.connect(_on_save_pressed)
+	$SidePanel/VBox/TopHBox/ButtonsColumn/UploadBtn.pressed.connect(_on_upload_pressed)
+
+	file_dialog.file_selected.connect(_on_file_dropped)
+	file_dialog.files_selected.connect(_on_file_dialog_files_selected)
+
+	unsaved_dialog.close_requested.connect(_on_dialog_cancel)
+	$UnsavedDialog/VBox/BtnRow/SaveBtn.pressed.connect(_on_dialog_save)
+	$UnsavedDialog/VBox/BtnRow/DiscardBtn.pressed.connect(_on_dialog_discard)
+	$UnsavedDialog/VBox/BtnRow/CancelBtn.pressed.connect(_on_dialog_cancel)
+
 	_set_edit_ui_visible(false)
 	_load_layout()
 	_auto_load_all_groups()
@@ -48,6 +95,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey and event.pressed:
+		if not event.echo and event.keycode == KEY_S and event.ctrl_pressed:
+			_save_layout()
+			_flash_save_button()
+			get_viewport().set_input_as_handled()
+			return
 		if not event.echo and event.keycode == KEY_Z and event.ctrl_pressed:
 			_undo()
 			get_viewport().set_input_as_handled()
@@ -83,7 +135,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not side_panel.get_global_rect().has_point(event.position):
 			if _pending_object:
 				var mp := objects_container.get_local_mouse_position()
-				_place_object(_pending_object, mp, Vector2.ZERO, _pending_path)
+				var sz := Vector2.ZERO
+				if _all_icon_size.has(_active_group):
+					var aspect := _pending_object.get_width() / float(_pending_object.get_height())
+					var w: float = _all_icon_size[_active_group]
+					sz = Vector2(w, w / aspect)
+				_place_object(_pending_object, mp, sz, _pending_path)
 				_pending_object = null
 				_pending_path = ""
 				get_viewport().set_input_as_handled()
@@ -96,12 +153,14 @@ func toggle() -> void:
 		_is_open = true
 		_set_edit_ui_visible(true)
 		_set_group(_active_group)
+		opened_changed.emit(true)
 	else:
 		_request_close()
 
 # --- Group ---
 
 func _set_group(group: String) -> void:
+	_all_icon_selected = false
 	_active_group = group
 	_auto_load_group(group)
 	object_list_panel.set_group_label(group)
@@ -126,6 +185,7 @@ func _auto_load_group(group: String) -> void:
 	var dir := DirAccess.open(folder)
 	if dir == null:
 		return
+	var d: Dictionary = GROUP_DEFAULTS[group]
 	var placed_paths: Dictionary = {}
 	for obj in _placed[group]:
 		if is_instance_valid(obj):
@@ -138,13 +198,23 @@ func _auto_load_group(group: String) -> void:
 			var ext := file.get_extension().to_lower()
 			if ext in ["png", "jpg", "jpeg", "webp"]:
 				var full_path := folder + file
+				if _is_blocked(group, full_path) or _deleted_paths[group].has(full_path):
+					file = dir.get_next()
+					continue
 				if not placed_paths.has(full_path):
 					var tex := _load_tex(full_path)
 					if tex:
-						var col := slot % 4
-						var row := slot / 4
-						var pos := Vector2(20.0 + col * 220.0, 20.0 + row * 220.0)
-						_place_object(tex, pos, Vector2.ZERO, full_path, true)
+						var cols: int = int(d["cols"])
+						var col := slot % cols
+						var row := slot / cols
+						var aspect := tex.get_width() / float(tex.get_height())
+						var base_w: float = _all_icon_size.get(group, float(d["size"]))
+						var sz := Vector2(base_w, base_w / aspect)
+						# _place_object centers on a 100-wide hit-box; compensate so the
+						# top-left lands at the grid origin we computed here.
+						var center_comp := Vector2(50.0, 50.0 / aspect)
+						var pos: Vector2 = d["origin"] + Vector2(col * d["spacing"].x, row * d["spacing"].y) + center_comp
+						_place_object(tex, pos, sz, full_path, true)
 						slot += 1
 		file = dir.get_next()
 	dir.list_dir_end()
@@ -204,15 +274,9 @@ func _on_canvas_object_clicked(obj: EditableObjectNode) -> void:
 		object_list_panel.select_object(obj)
 
 func _handle_gameplay_click(obj: EditableObjectNode) -> void:
-	match obj.group_id:
-		"screen":
-			_animate_screen_objects()
-			GameManager.add_views(1)
-		"upgrade":
-			var upgrade_id := obj.source_path.get_file().get_basename().to_lower()
-			if UpgradeManager.UPGRADES.has(upgrade_id):
-				var purchased := UpgradeManager.try_purchase(upgrade_id)
-				obj.animate_upgrade_result(purchased)
+	if obj.group_id == "screen":
+		_animate_screen_objects()
+		GameManager.add_views(1)
 
 func _animate_screen_objects() -> void:
 	for obj in _placed["screen"]:
@@ -227,6 +291,7 @@ func _primary_selected() -> EditableObjectNode:
 	return _selected_objects[0] if not _selected_objects.is_empty() else null
 
 func _select_objects(objects: Array) -> void:
+	_all_icon_selected = false
 	for group in GROUPS:
 		for obj in _placed[group]:
 			if is_instance_valid(obj):
@@ -237,6 +302,39 @@ func _select_objects(objects: Array) -> void:
 			_selected_objects.append(obj as EditableObjectNode)
 	btn_delete.disabled = _selected_objects.is_empty()
 	transform_panel.refresh(_primary_selected())
+
+func _on_all_icon_selected() -> void:
+	_all_icon_selected = true
+	# Clear sprite selection without going through _select_objects, which would
+	# also reset the transform panel out of all-icon mode.
+	for group in GROUPS:
+		for obj in _placed[group]:
+			if is_instance_valid(obj):
+				obj.selected = false
+	_selected_objects.clear()
+	btn_delete.disabled = true
+	transform_panel.refresh_all_icon(_all_icon_size.get(_active_group, 80.0))
+
+func _on_all_icon_size_changed(new_size: float) -> void:
+	if not _all_icon_size.has(_active_group):
+		return
+	_all_icon_size[_active_group] = new_size
+	_bulk_resize_centered(_active_group, new_size)
+	_dirty = true
+
+func _bulk_resize_centered(group: String, new_w: float) -> void:
+	for obj in _placed[group]:
+		if not is_instance_valid(obj):
+			continue
+		var tex: Texture2D = obj.texture_rect.texture
+		if tex == null:
+			continue
+		var aspect: float = tex.get_width() / float(tex.get_height())
+		var new_size := Vector2(new_w, new_w / aspect)
+		var center: Vector2 = obj.position + obj.size / 2.0
+		obj.size = new_size
+		obj.position = center - new_size / 2.0
+		obj._sync_rect_size()
 
 func _on_transform_live(pos: Vector2, sz: Vector2) -> void:
 	var primary := _primary_selected()
@@ -261,6 +359,9 @@ func _place_object(tex: Texture2D, pos: Vector2, sz := Vector2.ZERO, path := "",
 	var offset := Vector2(100.0, 100.0 / (tex.get_width() / float(tex.get_height()))) / 2.0
 	obj.init(tex, pos - offset, sz)
 	_placed[_active_group].append(obj)
+	# A path being placed again means it's no longer "user-deleted".
+	if path != "" and _deleted_paths.has(_active_group):
+		_deleted_paths[_active_group].erase(path)
 	if not silent:
 		object_list_panel.add_placed_object(obj)
 	_push_undo_add(obj)
@@ -285,6 +386,8 @@ func _delete_object(obj: EditableObjectNode) -> void:
 	var group := obj.group_id
 	_push_undo_delete(obj)
 	_placed[group].erase(obj)
+	if obj.source_path != "":
+		_deleted_paths[group][obj.source_path] = true
 	object_list_panel.remove_object(obj)
 	_selected_objects.erase(obj)
 	obj.queue_free()
@@ -343,6 +446,17 @@ func _undo() -> void:
 
 func _on_save_pressed() -> void:
 	_save_layout()
+	_flash_save_button()
+
+func _flash_save_button() -> void:
+	var btn: Button = $SidePanel/VBox/TopHBox/ButtonsColumn/SaveBtn
+	if btn == null:
+		return
+	var prev_text := btn.text
+	btn.text = "Saved!"
+	await get_tree().create_timer(0.75).timeout
+	if is_instance_valid(btn):
+		btn.text = prev_text
 
 func _on_upload_pressed() -> void:
 	file_dialog.popup_centered(Vector2i(900, 600))
@@ -381,6 +495,7 @@ func _close() -> void:
 	_pending_object = null
 	_select_objects([])
 	_update_object_interactivity()
+	opened_changed.emit(false)
 
 func _on_dialog_save() -> void:
 	_save_layout()
@@ -405,8 +520,18 @@ func _save_layout() -> void:
 			if is_instance_valid(obj):
 				list.append(obj.get_state())
 		cfg.set_value("layout", group, list)
+	for group in _all_icon_size:
+		cfg.set_value("all_icon", group, _all_icon_size[group])
+	for group in GROUPS:
+		cfg.set_value("deleted", group, _deleted_paths[group].keys())
 	cfg.save(LAYOUT_PATH)
 	_dirty = false
+
+func _is_blocked(group: String, path: String) -> bool:
+	if not SOURCE_BLOCKLIST.has(group):
+		return false
+	var basename := path.get_file().get_basename().to_lower()
+	return SOURCE_BLOCKLIST[group].has(basename)
 
 func _load_tex(res_path: String) -> Texture2D:
 	var tex := load(res_path) as Texture2D
@@ -422,11 +547,22 @@ func _load_layout() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(LAYOUT_PATH) != OK:
 		return
+	# Load all-icon master sizes first so that auto-load uses them.
+	for group in _all_icon_size:
+		if cfg.has_section_key("all_icon", group):
+			_all_icon_size[group] = float(cfg.get_value("all_icon", group, _all_icon_size[group]))
+	# Load deleted-path tombstones so auto-load skips them.
+	for group in GROUPS:
+		var deleted_list = cfg.get_value("deleted", group, [])
+		for p in deleted_list:
+			_deleted_paths[group][p] = true
 	var prev_group := _active_group
 	for group in GROUPS:
 		var list = cfg.get_value("layout", group, [])
 		_active_group = group
 		for entry in list:
+			if _is_blocked(group, entry["path"]):
+				continue
 			var tex := _load_tex(entry["path"])
 			if tex:
 				var obj := _place_object(tex, Vector2.ZERO, entry["size"], entry["path"], true)
@@ -437,6 +573,15 @@ func _load_layout() -> void:
 		for i in n:
 			if is_instance_valid(_placed[group][i]):
 				_placed[group][i].z_index = n - 1 - i
+		# Align scene-tree child order with z (Control mouse picking goes by tree order,
+		# not z_index). Iterate from lowest z to highest so the final move_to_end puts
+		# the highest-z item at the very end of the parent's children = picks clicks first.
+		for i in range(n - 1, -1, -1):
+			var obj: EditableObjectNode = _placed[group][i]
+			if is_instance_valid(obj):
+				var parent := obj.get_parent()
+				if parent:
+					parent.move_child(obj, parent.get_child_count() - 1)
 	_active_group = prev_group
 	_update_object_interactivity()
 	_undo_stack.clear()

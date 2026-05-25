@@ -74,6 +74,14 @@ func _resize_cells() -> void:
 	_grid.add_theme_constant_override("h_separation", int(CELL_GUTTER))
 	_grid.add_theme_constant_override("v_separation", int(CELL_GUTTER))
 
+func _process(_delta: float) -> void:
+	for cell in _cells:
+		var c: ToolCell = cell
+		if c.tool_id == "":
+			continue
+		var progress: float = Upgrades.get_cooldown_progress(c.tool_id)
+		c.update_cooldown(progress)
+
 
 # ------------------------------------------------------------------
 # Inner class — one cell of the pad.
@@ -81,6 +89,7 @@ func _resize_cells() -> void:
 class ToolCell extends Control:
 	var tool_id: String = ""
 	var slot_index: int = -1
+	var _cooldown_progress: float = 0.0
 
 	var _label: Label
 
@@ -116,6 +125,13 @@ class ToolCell extends Control:
 			return
 		_label.text = String(Upgrades.CATALOG[tool_id]["name"])
 
+	func update_cooldown(progress: float) -> void:
+		var clamped: float = clampf(progress, 0.0, 1.0)
+		if absf(clamped - _cooldown_progress) < 0.005:
+			return
+		_cooldown_progress = clamped
+		queue_redraw()
+
 	func _draw() -> void:
 		var rect := Rect2(Vector2.ZERO, size)
 		if tool_id == "":
@@ -124,3 +140,20 @@ class ToolCell extends Control:
 			return
 		draw_rect(rect, Color(0.18, 0.20, 0.26, 0.85), true)
 		draw_rect(rect, Color(0.55, 0.65, 0.85, 0.6), false, 1.0)
+		if _cooldown_progress <= 0.0:
+			return
+		_draw_cooldown_mask()
+
+	func _draw_cooldown_mask() -> void:
+		var center: Vector2 = size * 0.5
+		# Use a radius past the corners so the mask fully covers the square.
+		var radius: float = size.length() * 0.6
+		var steps: int = 32
+		var sweep: float = _cooldown_progress * TAU
+		var pts := PackedVector2Array()
+		pts.append(center)
+		for i in steps + 1:
+			var t: float = float(i) / float(steps)
+			var ang: float = -PI * 0.5 + sweep * t  # start at 12 o'clock, sweep clockwise
+			pts.append(center + Vector2(cos(ang), sin(ang)) * radius)
+		draw_colored_polygon(pts, Color(0, 0, 0, 0.55))

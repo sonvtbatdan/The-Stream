@@ -28,6 +28,27 @@ func _ready() -> void:
 
 	call_deferred("_layout_for_state")
 
+	Upgrades.purchased.connect(_on_purchased)
+	Upgrades.order_changed.connect(_rebuild_cells)
+	GameManager.run_reset.connect(_on_run_reset)
+
+	_rebuild_cells()
+
+func _on_purchased(_id: String) -> void:
+	_rebuild_cells()
+
+func _on_run_reset(_run: int) -> void:
+	_rebuild_cells()
+
+func _rebuild_cells() -> void:
+	var order: Array[String] = Upgrades.get_order()
+	for i in 9:
+		var cell: ToolCell = _cells[i]
+		if i < order.size():
+			cell.set_tool(order[i])
+		else:
+			cell.set_tool("")
+
 func _layout_for_state() -> void:
 	var target: Rect2 = _target_rect(_state)
 	_frame.position = target.position
@@ -61,16 +82,45 @@ class ToolCell extends Control:
 	var tool_id: String = ""
 	var slot_index: int = -1
 
+	var _label: Label
+
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_PASS
+		_label = Label.new()
+		_label.anchor_left = 0.0
+		_label.anchor_top = 0.0
+		_label.anchor_right = 1.0
+		_label.anchor_bottom = 1.0
+		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95))
+		_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		_label.add_theme_constant_override("outline_size", 3)
+		_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_label)
+		_refresh_label()
+
+	func set_tool(id: String) -> void:
+		if tool_id == id:
+			return
+		tool_id = id
+		_refresh_label()
+		queue_redraw()
+
+	func _refresh_label() -> void:
+		if _label == null:
+			return
+		if tool_id == "" or not Upgrades.CATALOG.has(tool_id):
+			_label.text = ""
+			return
+		_label.text = String(Upgrades.CATALOG[tool_id]["name"])
 
 	func _draw() -> void:
-		# Empty silhouette: thin rounded outline + faint fill.
 		var rect := Rect2(Vector2.ZERO, size)
 		if tool_id == "":
 			draw_rect(rect, Color(0.12, 0.13, 0.16, 0.55), true)
 			draw_rect(rect, Color(0.35, 0.40, 0.50, 0.4), false, 1.0)
 			return
-		# Owned cell — placeholder background; real content lands in Task 4.
 		draw_rect(rect, Color(0.18, 0.20, 0.26, 0.85), true)
 		draw_rect(rect, Color(0.55, 0.65, 0.85, 0.6), false, 1.0)

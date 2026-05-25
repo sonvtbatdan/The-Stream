@@ -56,7 +56,13 @@ func _on_purchased(_id: String) -> void:
 	_rebuild_cells()
 
 func _on_run_reset(_run: int) -> void:
+	_state = State.DOCKED
+	_transitioning = false
+	_focused_index = -1
+	_detail_name.text = ""
+	_detail_desc.text = ""
 	_rebuild_cells()
+	_layout_for_state()
 
 func _rebuild_cells() -> void:
 	var order: Array[String] = Upgrades.get_order()
@@ -184,10 +190,10 @@ func _tween_to_state() -> void:
 
 func _on_tween_finished() -> void:
 	_transitioning = false
-	if _state == State.DOCKED:
-		_backdrop.visible = false
-		_detail_panel.visible = false
-	_layout_inside_frame()
+	# Recompute frame position+size from the current parent size in case the
+	# window was resized during the tween. _layout_for_state also handles the
+	# backdrop/detail visibility for the new state.
+	_layout_for_state()
 
 func _set_focused(slot_index: int) -> void:
 	_focused_index = slot_index
@@ -209,6 +215,9 @@ func notify_drop(from_slot: int, to_slot: int) -> void:
 	# Focus follows the dragged tool to its new slot.
 	_set_focused(to_slot)
 
+func is_expanded() -> bool:
+	return _state == State.EXPANDED
+
 
 # ------------------------------------------------------------------
 # Inner class — one cell of the pad.
@@ -224,7 +233,7 @@ class ToolCell extends Control:
 	func _get_drag_data(_at: Vector2) -> Variant:
 		if pad == null or tool_id == "":
 			return null
-		if pad.get("_state") != 1:   # 1 == State.EXPANDED; raw int avoids exporting the enum
+		if not pad.is_expanded():
 			return null
 		# Build a tiny ghost preview so the drag has visible feedback.
 		var preview := Label.new()

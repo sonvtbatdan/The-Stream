@@ -99,8 +99,7 @@ func get_order() -> Array[String]:
 
 func start_cooldown(id: String, duration: float) -> void:
 	if duration <= 0.0:
-		_cooldowns.erase(id)
-		return
+		return  # treat as "no cooldown"; caller should not pass zero
 	_cooldowns[id] = {"remaining": duration, "total": duration}
 
 func get_cooldown_progress(id: String) -> float:
@@ -127,9 +126,9 @@ func _process(delta: float) -> void:
 		return
 	if _cooldowns.is_empty():
 		return
-	# Iterate over a snapshot of keys so we can erase while iterating.
-	var ids: Array = _cooldowns.keys()
-	for id in ids:
+	# Snapshot keys so erasing entries during iteration is safe; entry is a
+	# reference into _cooldowns[id], so mutating it updates the dict in place.
+	for id: String in _cooldowns.keys():
 		var entry: Dictionary = _cooldowns[id]
 		var remaining: float = float(entry["remaining"]) - delta
 		if remaining <= 0.0:

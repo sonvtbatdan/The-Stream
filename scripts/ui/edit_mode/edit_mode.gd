@@ -15,6 +15,7 @@ const ALL_UPGRADES_DEFAULT_POS := Vector2(20.0, 20.0)
 @onready var objects_container: Control = $ObjectsContainer
 @onready var dim_overlay: ColorRect = $DimOverlay
 @onready var side_panel: Panel = $SidePanel
+@onready var title_bar: Panel = $SidePanel/VBox/TitleBar
 @onready var object_list_panel: Panel = $SidePanel/VBox/TopHBox/ObjectListPanel
 @onready var file_dialog: FileDialog = $FileDialog
 @onready var unsaved_dialog: Window = $UnsavedDialog
@@ -36,6 +37,12 @@ var _selected_objects: Array = []
 var _undo_stack: Array[Dictionary] = []
 var _placed: Dictionary = {}  # group -> Array[EditableObjectNode]
 
+# SidePanel drag-to-move state. Started by clicking the TitleBar; the
+# subsequent motion + release events are caught in _input() because they
+# travel faster than the panel moves and won't always land on the title bar.
+var _dragging_panel: bool = false
+var _drag_offset: Vector2 = Vector2.ZERO
+
 func _ready() -> void:
 	layer = 10
 	for g in GROUPS:
@@ -43,6 +50,7 @@ func _ready() -> void:
 	object_list_panel.row_selected.connect(_on_list_row_selected)
 	object_list_panel.file_dropped.connect(_on_file_dropped)
 	object_list_panel.z_indices_changed.connect(_sort_canvas_z_order)
+	title_bar.gui_input.connect(_on_title_bar_input)
 	transform_panel.connect("transform_changed", _on_transform_live)
 	_set_edit_ui_visible(false)
 	_load_layout()
@@ -51,6 +59,27 @@ func _ready() -> void:
 func _set_edit_ui_visible(v: bool) -> void:
 	dim_overlay.visible = v
 	side_panel.visible = v
+	if not v:
+		_dragging_panel = false   # never resume a drag after the panel hides
+
+func _on_title_bar_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_dragging_panel = true
+		_drag_offset = side_panel.global_position - get_viewport().get_mouse_position()
+
+func _input(event: InputEvent) -> void:
+	if not _dragging_panel:
+		return
+	if event is InputEventMouseMotion:
+		var new_pos: Vector2 = get_viewport().get_mouse_position() + _drag_offset
+		var vp_size: Vector2 = get_viewport().get_visible_rect().size
+		# Keep at least 32 px of the title bar reachable on every side so the
+		# panel can always be grabbed back if dragged near the edge.
+		new_pos.x = clampf(new_pos.x, 32.0 - side_panel.size.x, vp_size.x - 32.0)
+		new_pos.y = clampf(new_pos.y, 0.0, vp_size.y - 32.0)
+		side_panel.position = new_pos
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		_dragging_panel = false
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _is_open:

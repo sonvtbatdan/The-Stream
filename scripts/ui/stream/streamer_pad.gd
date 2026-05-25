@@ -13,18 +13,34 @@ var _cells: Array[ToolCell] = []   # ToolCell controls in slot order (0..8)
 var _focused_index: int = -1
 var _transitioning: bool = false
 
+@onready var _backdrop: ColorRect = $Backdrop
 @onready var _frame: Panel = $Frame
 @onready var _grid: GridContainer = $Frame/Grid
+@onready var _detail_panel: PanelContainer = $Frame/DetailPanel
+@onready var _detail_name: Label = $Frame/DetailPanel/DetailMargin/DetailVBox/NameLabel
+@onready var _detail_desc: Label = $Frame/DetailPanel/DetailMargin/DetailVBox/DescLabel
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE  # let arena clicks pass through outside Frame
 
-	# Build 9 empty cells.
 	for i in 9:
 		var cell := ToolCell.new()
 		cell.slot_index = i
+		cell.gui_input.connect(_on_cell_gui_input.bind(i))
+		cell.mouse_entered.connect(_on_cell_mouse_entered.bind(i))
 		_cells.append(cell)
 		_grid.add_child(cell)
+
+	_frame.gui_input.connect(_on_frame_gui_input)
+	_backdrop.gui_input.connect(_on_backdrop_gui_input)
+	resized.connect(_layout_for_state)
+
+	_detail_panel.add_theme_constant_override("margin_left", 12)
+	_detail_panel.add_theme_constant_override("margin_right", 12)
+	_detail_panel.add_theme_constant_override("margin_top", 8)
+	_detail_panel.add_theme_constant_override("margin_bottom", 8)
+	_detail_name.add_theme_font_size_override("font_size", 18)
+	_detail_desc.add_theme_color_override("font_color", Color(0.82, 0.88, 0.96))
 
 	call_deferred("_layout_for_state")
 
@@ -53,7 +69,33 @@ func _layout_for_state() -> void:
 	var target: Rect2 = _target_rect(_state)
 	_frame.position = target.position
 	_frame.size = target.size
-	_resize_cells()
+	_backdrop.visible = _state == State.EXPANDED
+	_detail_panel.visible = _state == State.EXPANDED
+	_layout_inside_frame()
+
+func _layout_inside_frame() -> void:
+	var inner_margin: float = 8.0
+	var frame_w: float = _frame.size.x
+	var frame_h: float = _frame.size.y
+
+	# DetailPanel only shows in expanded; reserve space at the bottom if so.
+	var detail_h: float = 90.0 if _state == State.EXPANDED else 0.0
+
+	var grid_w: float = frame_w - inner_margin * 2.0
+	var grid_h: float = frame_h - inner_margin * 2.0 - detail_h - (inner_margin if detail_h > 0.0 else 0.0)
+
+	_grid.position = Vector2(inner_margin, inner_margin)
+	_grid.size = Vector2(grid_w, grid_h)
+
+	var side: float = (grid_w - CELL_GUTTER * 2.0) / 3.0
+	for cell in _cells:
+		(cell as Control).custom_minimum_size = Vector2(side, side)
+	_grid.add_theme_constant_override("h_separation", int(CELL_GUTTER))
+	_grid.add_theme_constant_override("v_separation", int(CELL_GUTTER))
+
+	if _state == State.EXPANDED:
+		_detail_panel.position = Vector2(inner_margin, inner_margin + grid_h + inner_margin)
+		_detail_panel.size = Vector2(grid_w, detail_h)
 
 func _target_rect(state: int) -> Rect2:
 	var parent_size: Vector2 = size
@@ -63,23 +105,93 @@ func _target_rect(state: int) -> Rect2:
 	# EXPANDED — centered
 	return Rect2((parent_size - EXPANDED_SIZE) * 0.5, EXPANDED_SIZE)
 
-func _resize_cells() -> void:
-	# Grid drawable width = _frame.size.x - 16 (.tscn insets the Grid by 8px
-	# on each side). With 3 columns and 2 interior gutters of CELL_GUTTER:
-	#   3 * side + 2 * CELL_GUTTER = _frame.size.x - 16
-	#   => side = (_frame.size.x - 16 - 2 * CELL_GUTTER) / 3
-	var side: float = (_frame.size.x - 16.0 - CELL_GUTTER * 2.0) / 3.0
-	for cell in _cells:
-		(cell as Control).custom_minimum_size = Vector2(side, side)
-	_grid.add_theme_constant_override("h_separation", int(CELL_GUTTER))
-	_grid.add_theme_constant_override("v_separation", int(CELL_GUTTER))
-
 func _process(_delta: float) -> void:
 	for cell in _cells:
 		if cell.tool_id == "":
 			continue
 		var progress: float = Upgrades.get_cooldown_progress(cell.tool_id)
 		cell.update_cooldown(progress)
+
+func _on_frame_gui_input(event: InputEvent) -> void:
+	if _state != State.DOCKED:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_expand()
+
+func _on_backdrop_gui_input(event: InputEvent) -> void:
+	if _state != State.EXPANDED:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_collapse()
+
+func _on_cell_gui_input(event: InputEvent, slot_index: int) -> void:
+	if _state == State.DOCKED:
+		# Treat any cell click as a pad expand (covered by Frame handler too,
+		# but cells consume input first).
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_expand()
+		return
+	# EXPANDED: clicking an owned cell sets focus.
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_set_focused(slot_index)
+
+func _on_cell_mouse_entered(slot_index: int) -> void:
+	if _state == State.EXPANDED:
+		_set_focused(slot_index)
+
+func _expand() -> void:
+	if _transitioning or _state == State.EXPANDED:
+		return
+	_state = State.EXPANDED
+	_backdrop.visible = true
+	_detail_panel.visible = true
+	# Default focus to first owned cell, if any.
+	var first_owned: int = -1
+	for i in _cells.size():
+		if (_cells[i] as ToolCell).tool_id != "":
+			first_owned = i
+			break
+	_set_focused(first_owned)
+	_tween_to_state()
+
+func _collapse() -> void:
+	if _transitioning or _state == State.DOCKED:
+		return
+	_state = State.DOCKED
+	_focused_index = -1
+	_tween_to_state()
+
+func _tween_to_state() -> void:
+	_transitioning = true
+	var target: Rect2 = _target_rect(_state)
+	# Recompute cell layout immediately so the grid reflows even before the
+	# tween finishes (avoids visible reflow at the tail of the animation).
+	_layout_inside_frame()
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(_frame, "position", target.position, ANIM_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_frame, "size", target.size, ANIM_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_callback(_on_tween_finished)
+
+func _on_tween_finished() -> void:
+	_transitioning = false
+	if _state == State.DOCKED:
+		_backdrop.visible = false
+		_detail_panel.visible = false
+	_layout_inside_frame()
+
+func _set_focused(slot_index: int) -> void:
+	_focused_index = slot_index
+	if slot_index < 0 or slot_index >= _cells.size():
+		_detail_name.text = ""
+		_detail_desc.text = ""
+		return
+	var cell: ToolCell = _cells[slot_index]
+	if cell.tool_id == "":
+		_detail_name.text = ""
+		_detail_desc.text = ""
+		return
+	_detail_name.text = String(Upgrades.CATALOG[cell.tool_id]["name"])
+	_detail_desc.text = Upgrades.get_desc(cell.tool_id)
 
 
 # ------------------------------------------------------------------

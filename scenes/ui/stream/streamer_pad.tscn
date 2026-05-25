@@ -8,15 +8,33 @@ anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource("1")
 
+[node name="Backdrop" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.55)
+visible = false
+mouse_filter = 0
+
 [node name="Frame" type="Panel" parent="."]
 mouse_filter = 0
 
 [node name="Grid" type="GridContainer" parent="Frame"]
-anchor_right = 1.0
-anchor_bottom = 1.0
 offset_left = 8.0
 offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
 columns = 3
 mouse_filter = 2
+
+[node name="DetailPanel" type="PanelContainer" parent="Frame"]
+visible = false
+mouse_filter = 0
+
+[node name="DetailMargin" type="MarginContainer" parent="Frame/DetailPanel"]
+
+[node name="DetailVBox" type="VBoxContainer" parent="Frame/DetailPanel/DetailMargin"]
+
+[node name="NameLabel" type="Label" parent="Frame/DetailPanel/DetailMargin/DetailVBox"]
+text = ""
+
+[node name="DescLabel" type="Label" parent="Frame/DetailPanel/DetailMargin/DetailVBox"]
+text = ""
+autowrap_mode = 3

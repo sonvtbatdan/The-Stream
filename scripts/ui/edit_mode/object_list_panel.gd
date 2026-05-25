@@ -6,6 +6,7 @@ signal file_dropped(path: String)
 
 const ROW_HEIGHT := 56.0
 const THUMB_SIZE := 48.0
+const ALL_UPGRADES_MARKER := "res://__all_upgrades__"
 
 @onready var title_label: Label = $VBox/TitleLabel
 @onready var item_vbox: VBoxContainer = $VBox/Scroll/ItemList
@@ -33,14 +34,40 @@ func set_group_label(group: String) -> void:
 
 func refresh(placed_objects: Array) -> void:
 	_clear()
+	# Pin the all_upgrades control row at the top; render all other rows
+	# below it in their original order.
+	var pinned: EditableObjectNode = null
 	for obj in placed_objects:
-		if is_instance_valid(obj):
+		if is_instance_valid(obj) and _is_pinned(obj):
+			pinned = obj
+			break
+	if pinned != null:
+		_append_row(pinned)
+	for obj in placed_objects:
+		if is_instance_valid(obj) and not _is_pinned(obj):
 			_append_row(obj)
 	_update_z_indices()
 
 func add_placed_object(obj: EditableObjectNode) -> void:
 	_append_row(obj)
+	# Keep the pinned row at the top of the vbox if a non-pinned object was
+	# just appended after it.
+	if not _is_pinned(obj):
+		_move_pinned_to_top()
 	_update_z_indices()
+
+func _is_pinned(obj: EditableObjectNode) -> bool:
+	return obj != null and obj.source_path == ALL_UPGRADES_MARKER
+
+func _move_pinned_to_top() -> void:
+	for i in _rows.size():
+		var obj: EditableObjectNode = _rows[i]["canvas_obj"]
+		if is_instance_valid(obj) and _is_pinned(obj) and i != 0:
+			item_vbox.move_child(_rows[i]["row"], 0)
+			var entry: Dictionary = _rows[i]
+			_rows.remove_at(i)
+			_rows.insert(0, entry)
+			return
 
 func remove_object(obj: EditableObjectNode) -> void:
 	for i in _rows.size():
@@ -123,14 +150,19 @@ func _check_swap() -> void:
 	var cur_idx := _row_index(_dragging_row)
 	if cur_idx < 0:
 		return
+	# The pinned all_upgrades row never moves and other rows cannot cross it.
+	if _is_pinned(_rows[cur_idx]["canvas_obj"]):
+		return
 	var mouse_y := get_global_mouse_position().y
 
 	if cur_idx > 0:
-		var above_row: Control = _rows[cur_idx - 1]["row"]
-		var center := above_row.global_position.y + above_row.size.y * 0.5
-		if mouse_y < center:
-			_swap(cur_idx, cur_idx - 1)
-			return
+		var above_idx := cur_idx - 1
+		if not _is_pinned(_rows[above_idx]["canvas_obj"]):
+			var above_row: Control = _rows[above_idx]["row"]
+			var center := above_row.global_position.y + above_row.size.y * 0.5
+			if mouse_y < center:
+				_swap(cur_idx, above_idx)
+				return
 
 	if cur_idx < _rows.size() - 1:
 		var below_row: Control = _rows[cur_idx + 1]["row"]

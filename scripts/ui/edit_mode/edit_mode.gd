@@ -4,6 +4,14 @@ const EditableObject := preload("res://scenes/ui/edit_mode/editable_object.tscn"
 const LAYOUT_PATH := "user://layout.cfg"
 const GROUPS := ["screen", "upgrade", "visual", "stat"]
 
+# Sentinel source_path for the synthetic "all_upgrades" control object.
+# Pinned at the top of the upgrade group's list; resizing it propagates to
+# every other upgrade object. Texture is generated procedurally so no asset
+# file is required.
+const ALL_UPGRADES_MARKER := "res://__all_upgrades__"
+const ALL_UPGRADES_DEFAULT_SIZE := 120.0
+const ALL_UPGRADES_DEFAULT_POS := Vector2(20.0, 20.0)
+
 @onready var objects_container: Control = $ObjectsContainer
 @onready var dim_overlay: ColorRect = $DimOverlay
 @onready var side_panel: Panel = $SidePanel
@@ -121,7 +129,52 @@ func _auto_load_all_groups() -> void:
 	_undo_stack.clear()
 	_dirty = false
 
+func _ensure_all_upgrades(group: String) -> void:
+	if group != "upgrade":
+		return
+	for obj in _placed["upgrade"]:
+		if is_instance_valid(obj) and obj.source_path == ALL_UPGRADES_MARKER:
+			return
+	var tex := _make_all_upgrades_texture()
+	var prev := _active_group
+	_active_group = "upgrade"
+	var sz := Vector2(ALL_UPGRADES_DEFAULT_SIZE, ALL_UPGRADES_DEFAULT_SIZE)
+	# _place_object internally subtracts a (50, 50) centering offset from
+	# `pos`; bypass that by setting the final position directly after creation.
+	var obj := _place_object(tex, Vector2.ZERO, sz, ALL_UPGRADES_MARKER, true)
+	obj.position = ALL_UPGRADES_DEFAULT_POS
+	_active_group = prev
+
+# 3x3 grid glyph: nine rounded squares on a dark backdrop. 1:1 aspect so
+# editing width and height in the transform panel propagate symmetrically.
+func _make_all_upgrades_texture() -> Texture2D:
+	var side := 128
+	var img := Image.create(side, side, false, Image.FORMAT_RGBA8)
+	var bg := Color(0.08, 0.10, 0.14, 1.0)
+	var border := Color(0.55, 0.65, 0.85, 1.0)
+	var cell_color := Color(0.85, 0.90, 1.0, 1.0)
+	img.fill(bg)
+	# Outer border (2px ring).
+	for y in side:
+		for x in side:
+			if x < 2 or x >= side - 2 or y < 2 or y >= side - 2:
+				img.set_pixel(x, y, border)
+	# 3x3 inner cells. Inset 12px, gutter 6px between cells.
+	var inset := 16
+	var gutter := 6
+	var inner := side - inset * 2
+	var cell_size := (inner - gutter * 2) / 3
+	for row in 3:
+		for col in 3:
+			var x0 := inset + col * (cell_size + gutter)
+			var y0 := inset + row * (cell_size + gutter)
+			for dy in cell_size:
+				for dx in cell_size:
+					img.set_pixel(x0 + dx, y0 + dy, cell_color)
+	return ImageTexture.create_from_image(img)
+
 func _auto_load_group(group: String) -> void:
+	_ensure_all_upgrades(group)
 	var folder := "res://assets/" + group + "/"
 	var dir := DirAccess.open(folder)
 	if dir == null:
@@ -245,7 +298,21 @@ func _on_transform_live(pos: Vector2, sz: Vector2) -> void:
 	primary.position = pos
 	primary.size = sz
 	primary._sync_rect_size()
+	if primary.is_all_upgrades():
+		_propagate_all_upgrades_size(sz)
 	_dirty = true
+
+# When the synthetic all_upgrades control is resized, every other upgrade
+# object adopts the new width; each object's height is then derived from its
+# own aspect ratio so individual upgrade assets don't distort.
+func _propagate_all_upgrades_size(target_size: Vector2) -> void:
+	for obj in _placed["upgrade"]:
+		if not is_instance_valid(obj) or obj.is_all_upgrades():
+			continue
+		var new_w: float = target_size.x
+		var aspect: float = obj._aspect_ratio if obj._aspect_ratio > 0.0 else 1.0
+		obj.size = Vector2(new_w, new_w / aspect)
+		obj._sync_rect_size()
 
 func _on_transform_apply() -> void:
 	_save_layout()
@@ -270,6 +337,8 @@ func _place_object(tex: Texture2D, pos: Vector2, sz := Vector2.ZERO, path := "",
 func notify_transform_changed(obj: Control) -> void:
 	_push_undo_transform(obj)
 	_dirty = true
+	if obj is EditableObjectNode and (obj as EditableObjectNode).is_all_upgrades():
+		_propagate_all_upgrades_size(obj.size)
 	if obj in _selected_objects:
 		transform_panel.refresh(_primary_selected())
 
@@ -409,6 +478,8 @@ func _save_layout() -> void:
 	_dirty = false
 
 func _load_tex(res_path: String) -> Texture2D:
+	if res_path == ALL_UPGRADES_MARKER:
+		return _make_all_upgrades_texture()
 	var tex := load(res_path) as Texture2D
 	if tex:
 		return tex

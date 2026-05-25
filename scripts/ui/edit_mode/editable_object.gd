@@ -7,6 +7,10 @@ signal object_clicked(obj: EditableObjectNode)
 const HANDLE_VISUAL := 10.0
 const HANDLE_HIT    := 22.0
 const MIN_SIZE := Vector2(30.0, 30.0)
+const ALL_UPGRADES_MARKER := "res://__all_upgrades__"
+
+func is_all_upgrades() -> bool:
+	return source_path == ALL_UPGRADES_MARKER
 
 @onready var texture_rect: TextureRect = $TextureRect
 
@@ -85,7 +89,7 @@ func _setup_counter_label() -> void:
 	add_child(_counter_label)
 
 func _setup_price_label() -> void:
-	if group_id != "upgrade":
+	if group_id != "upgrade" or is_all_upgrades():
 		return
 	var upgrade_id := source_path.get_file().get_basename().to_lower()
 	if UpgradeManager.UPGRADES.has(upgrade_id):
@@ -94,7 +98,7 @@ func _setup_price_label() -> void:
 		_price_label.size = Vector2(size.x, 30.0)
 
 func _setup_desc_panel() -> void:
-	if group_id != "upgrade":
+	if group_id != "upgrade" or is_all_upgrades():
 		return
 	var upgrade_id := source_path.get_file().get_basename().to_lower()
 	if not UpgradeManager.UPGRADES.has(upgrade_id):
@@ -159,6 +163,9 @@ func set_gameplay_mode(v: bool) -> void:
 		_counter_label.visible = v
 	if not v:
 		_hide_hover_immediate()
+	# The all_upgrades control object is an editor-only handle.
+	if is_all_upgrades():
+		visible = not v
 
 func get_state() -> Dictionary:
 	return { "path": source_path, "group": group_id, "pos": position, "size": size, "z_index": z_index }
@@ -255,7 +262,7 @@ func _handle_gameplay_input(event: InputEvent) -> void:
 		object_clicked.emit(self)
 
 func _on_mouse_entered() -> void:
-	if not _gameplay_mode or group_id != "upgrade":
+	if not _gameplay_mode or group_id != "upgrade" or is_all_upgrades():
 		return
 	var upgrade_id := source_path.get_file().get_basename().to_lower()
 	if not UpgradeManager.UPGRADES.has(upgrade_id):
@@ -263,7 +270,7 @@ func _on_mouse_entered() -> void:
 	_show_hover()
 
 func _on_mouse_exited() -> void:
-	if not _gameplay_mode or group_id != "upgrade":
+	if not _gameplay_mode or group_id != "upgrade" or is_all_upgrades():
 		return
 	_hide_hover()
 

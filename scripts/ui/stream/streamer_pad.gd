@@ -17,6 +17,7 @@ var _transitioning: bool = false
 @onready var _frame: Panel = $Frame
 @onready var _grid: GridContainer = $Frame/Grid
 @onready var _detail_panel: PanelContainer = $Frame/DetailPanel
+@onready var _detail_margin: MarginContainer = $Frame/DetailPanel/DetailMargin
 @onready var _detail_name: Label = $Frame/DetailPanel/DetailMargin/DetailVBox/NameLabel
 @onready var _detail_desc: Label = $Frame/DetailPanel/DetailMargin/DetailVBox/DescLabel
 
@@ -35,10 +36,10 @@ func _ready() -> void:
 	_backdrop.gui_input.connect(_on_backdrop_gui_input)
 	resized.connect(_layout_for_state)
 
-	_detail_panel.add_theme_constant_override("margin_left", 12)
-	_detail_panel.add_theme_constant_override("margin_right", 12)
-	_detail_panel.add_theme_constant_override("margin_top", 8)
-	_detail_panel.add_theme_constant_override("margin_bottom", 8)
+	_detail_margin.add_theme_constant_override("margin_left", 12)
+	_detail_margin.add_theme_constant_override("margin_right", 12)
+	_detail_margin.add_theme_constant_override("margin_top", 8)
+	_detail_margin.add_theme_constant_override("margin_bottom", 8)
 	_detail_name.add_theme_font_size_override("font_size", 18)
 	_detail_desc.add_theme_color_override("font_color", Color(0.82, 0.88, 0.96))
 
@@ -66,6 +67,8 @@ func _rebuild_cells() -> void:
 			cell.set_tool("")
 
 func _layout_for_state() -> void:
+	if _transitioning:
+		return  # tween owns _frame.position / size during transitions
 	var target: Rect2 = _target_rect(_state)
 	_frame.position = target.position
 	_frame.size = target.size
@@ -84,17 +87,23 @@ func _layout_inside_frame() -> void:
 	var grid_w: float = frame_w - inner_margin * 2.0
 	var grid_h: float = frame_h - inner_margin * 2.0 - detail_h - (inner_margin if detail_h > 0.0 else 0.0)
 
-	_grid.position = Vector2(inner_margin, inner_margin)
-	_grid.size = Vector2(grid_w, grid_h)
-
-	var side: float = (grid_w - CELL_GUTTER * 2.0) / 3.0
+	var side: float = minf(
+		(grid_w - CELL_GUTTER * 2.0) / 3.0,
+		(grid_h - CELL_GUTTER * 2.0) / 3.0
+	)
+	# Recompute the grid's actual square size so we can center it horizontally
+	# when height is the constraining dimension (e.g. EXPANDED state where the
+	# detail panel reserves vertical space).
+	var grid_actual: float = side * 3.0 + CELL_GUTTER * 2.0
+	_grid.position = Vector2((frame_w - grid_actual) * 0.5, inner_margin)
+	_grid.size = Vector2(grid_actual, grid_actual)
 	for cell in _cells:
 		(cell as Control).custom_minimum_size = Vector2(side, side)
 	_grid.add_theme_constant_override("h_separation", int(CELL_GUTTER))
 	_grid.add_theme_constant_override("v_separation", int(CELL_GUTTER))
 
 	if _state == State.EXPANDED:
-		_detail_panel.position = Vector2(inner_margin, inner_margin + grid_h + inner_margin)
+		_detail_panel.position = Vector2(inner_margin, inner_margin + grid_actual + inner_margin)
 		_detail_panel.size = Vector2(grid_w, detail_h)
 
 func _target_rect(state: int) -> Rect2:
@@ -164,9 +173,9 @@ func _collapse() -> void:
 func _tween_to_state() -> void:
 	_transitioning = true
 	var target: Rect2 = _target_rect(_state)
-	# Recompute cell layout immediately so the grid reflows even before the
-	# tween finishes (avoids visible reflow at the tail of the animation).
-	_layout_inside_frame()
+	# Cells stay at their previous size during the tween, then reflow once
+	# the frame reaches its final size in _on_tween_finished. This avoids
+	# the double-jump that would result from reflowing with stale frame size.
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(_frame, "position", target.position, ANIM_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_frame, "size", target.size, ANIM_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)

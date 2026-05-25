@@ -27,6 +27,7 @@ func _ready() -> void:
 	for i in 9:
 		var cell := ToolCell.new()
 		cell.slot_index = i
+		cell.pad = self
 		cell.gui_input.connect(_on_cell_gui_input.bind(i))
 		cell.mouse_entered.connect(_on_cell_mouse_entered.bind(i))
 		_cells.append(cell)
@@ -202,6 +203,12 @@ func _set_focused(slot_index: int) -> void:
 	_detail_name.text = String(Upgrades.CATALOG[cell.tool_id]["name"])
 	_detail_desc.text = Upgrades.get_desc(cell.tool_id)
 
+func notify_drop(from_slot: int, to_slot: int) -> void:
+	# Both slots are owned (ToolCell._can_drop_data already filtered empty drops).
+	Upgrades.swap_slots(from_slot, to_slot)
+	# Focus follows the dragged tool to its new slot.
+	_set_focused(to_slot)
+
 
 # ------------------------------------------------------------------
 # Inner class — one cell of the pad.
@@ -209,9 +216,38 @@ func _set_focused(slot_index: int) -> void:
 class ToolCell extends Control:
 	var tool_id: String = ""
 	var slot_index: int = -1
+	var pad: Control = null   # back-reference to StreamerPad
 	var _cooldown_progress: float = 0.0
 
 	var _label: Label
+
+	func _get_drag_data(_at: Vector2) -> Variant:
+		if pad == null or tool_id == "":
+			return null
+		if pad.get("_state") != 1:   # 1 == State.EXPANDED; raw int avoids exporting the enum
+			return null
+		# Build a tiny ghost preview so the drag has visible feedback.
+		var preview := Label.new()
+		preview.text = String(Upgrades.CATALOG[tool_id]["name"])
+		preview.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+		preview.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		preview.add_theme_constant_override("outline_size", 3)
+		set_drag_preview(preview)
+		return {"from_slot": slot_index}
+
+	func _can_drop_data(_at: Vector2, data: Variant) -> bool:
+		if tool_id == "":
+			return false  # drops on empty cells are no-ops
+		if not (data is Dictionary):
+			return false
+		if not data.has("from_slot"):
+			return false
+		return int(data["from_slot"]) != slot_index
+
+	func _drop_data(_at: Vector2, data: Variant) -> void:
+		if pad == null:
+			return
+		pad.notify_drop(int(data["from_slot"]), slot_index)
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_PASS

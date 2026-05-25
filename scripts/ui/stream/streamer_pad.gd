@@ -2,7 +2,7 @@ extends Control
 
 enum State { DOCKED, EXPANDED }
 
-const DOCKED_SIZE := Vector2(320.0, 320.0)
+const DOCKED_SIZE := Vector2(80.0, 80.0)
 const DOCKED_MARGIN := 16.0
 const EXPANDED_SIZE := Vector2(500.0, 500.0)
 const CELL_GUTTER := 8.0
@@ -104,8 +104,12 @@ func _layout_inside_frame() -> void:
 	var grid_actual: float = side * 3.0 + CELL_GUTTER * 2.0
 	_grid.position = Vector2((frame_w - grid_actual) * 0.5, inner_margin)
 	_grid.size = Vector2(grid_actual, grid_actual)
+	# Font size scales with cell size: ~18% of side, floored at 7px so docked
+	# (~21px cells) still shows something legible without overflowing.
+	var font_size: int = maxi(7, int(round(side * 0.18)))
 	for cell in _cells:
 		(cell as Control).custom_minimum_size = Vector2(side, side)
+		cell.set_label_font_size(font_size)
 	_grid.add_theme_constant_override("h_separation", int(CELL_GUTTER))
 	_grid.add_theme_constant_override("v_separation", int(CELL_GUTTER))
 
@@ -291,6 +295,11 @@ class ToolCell extends Control:
 			return
 		_label.text = String(Upgrades.CATALOG[tool_id]["name"])
 
+	func set_label_font_size(font_size: int) -> void:
+		if _label == null:
+			return
+		_label.add_theme_font_size_override("font_size", font_size)
+
 	func update_cooldown(progress: float) -> void:
 		var clamped: float = clampf(progress, 0.0, 1.0)
 		if absf(clamped - _cooldown_progress) < 0.005:
@@ -312,8 +321,8 @@ class ToolCell extends Control:
 
 	func _draw_cooldown_mask() -> void:
 		var center: Vector2 = size * 0.5
-		# Use a radius past the corners so the mask fully covers the square.
-		var radius: float = size.length() * 0.6
+		# Inscribed circle: mask sits inside the cell's square, not over the corners.
+		var radius: float = minf(size.x, size.y) * 0.5
 		var steps: int = 32
 		var sweep: float = _cooldown_progress * TAU
 		var color := Color(0, 0, 0, 0.55)

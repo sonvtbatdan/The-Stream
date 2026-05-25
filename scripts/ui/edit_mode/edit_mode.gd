@@ -42,6 +42,7 @@ func _ready() -> void:
 		_placed[g] = []
 	object_list_panel.row_selected.connect(_on_list_row_selected)
 	object_list_panel.file_dropped.connect(_on_file_dropped)
+	object_list_panel.z_indices_changed.connect(_sort_canvas_z_order)
 	transform_panel.connect("transform_changed", _on_transform_live)
 	_set_edit_ui_visible(false)
 	_load_layout()
@@ -126,6 +127,7 @@ func _auto_load_all_groups() -> void:
 		_auto_load_group(g)
 	_active_group = prev
 	_update_object_interactivity()
+	_sort_canvas_z_order()
 	_undo_stack.clear()
 	_dirty = false
 
@@ -301,6 +303,20 @@ func _on_transform_live(pos: Vector2, sz: Vector2) -> void:
 	if primary.is_all_upgrades():
 		_propagate_all_upgrades_size(sz)
 	_dirty = true
+
+# Sync ObjectsContainer's tree order to match every object's z_index. Godot
+# routes GUI input by tree order (later siblings get input first), not by
+# z_index, so without this sync a visually-on-top object can be unclickable
+# because an underneath sibling absorbs the click.
+func _sort_canvas_z_order() -> void:
+	var all_objs: Array = []
+	for group in GROUPS:
+		for obj in _placed[group]:
+			if is_instance_valid(obj):
+				all_objs.append(obj)
+	all_objs.sort_custom(func(a, b): return a.z_index < b.z_index)
+	for i in all_objs.size():
+		objects_container.move_child(all_objs[i], i)
 
 # When the synthetic all_upgrades control is resized, every other upgrade
 # object adopts the new width; each object's height is then derived from its
@@ -510,5 +526,6 @@ func _load_layout() -> void:
 				_placed[group][i].z_index = n - 1 - i
 	_active_group = prev_group
 	_update_object_interactivity()
+	_sort_canvas_z_order()
 	_undo_stack.clear()
 	_dirty = false

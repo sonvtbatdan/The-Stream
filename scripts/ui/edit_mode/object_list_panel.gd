@@ -3,6 +3,10 @@ extends Panel
 signal row_selected(canvas_obj: EditableObjectNode)
 signal order_changed(from_idx: int, to_idx: int)
 signal file_dropped(path: String)
+# Fired whenever z_index assignments change. The owning EditMode listens so
+# it can also reorder ObjectsContainer's children, since Godot routes GUI
+# input by tree order (later siblings win), not by z_index.
+signal z_indices_changed
 
 const ROW_HEIGHT := 56.0
 const THUMB_SIZE := 48.0
@@ -186,6 +190,7 @@ func _update_z_indices() -> void:
 		var obj: EditableObjectNode = _rows[i]["canvas_obj"]
 		if is_instance_valid(obj):
 			obj.z_index = top - i   # row 0 (top of list) = highest z
+	z_indices_changed.emit()
 
 # --- Selection highlight ---
 

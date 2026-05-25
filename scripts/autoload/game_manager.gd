@@ -63,3 +63,42 @@ func _emit_if_changed() -> void:
 	if si != _last_subs_int:
 		_last_subs_int = si
 		subs_changed.emit(si)
+
+
+# ---------------------------------------------------------------------------
+# Legacy compatibility shims — inert no-ops that keep the old HUD scripts
+# (stat_panel.gd, comment_panel.gd, upgrade_item.gd) and upgrade_manager.gd
+# from crashing at load time. These are dead-code references in scripts that
+# main.tscn still instances; remove this whole block once those scripts/scenes
+# are deleted or ported to the new GameManager API.
+# ---------------------------------------------------------------------------
+
+signal cash_changed(new_cash: float)
+
+var cash: float = 0.0
+var current_goal: int = 100
+var run: int = 1
+
+func get_time_string() -> String:
+	return "00:00"
+
+func spend_cash(_amount: float) -> bool:
+	return false
+
+func add_non_bot_vps(_amount: float) -> void:
+	pass
+
+func add_bot_vps(_amount: float) -> void:
+	pass
+
+func apply_view_multiplier(_pct: float) -> void:
+	pass
+
+func apply_boost(_pct: float, _duration: float) -> void:
+	pass
+
+func add_bot_efficiency(_extra: float) -> void:
+	pass
+
+func remove_subs(_amount: int) -> void:
+	pass

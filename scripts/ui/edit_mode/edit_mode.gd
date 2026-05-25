@@ -261,8 +261,10 @@ func _on_canvas_object_clicked(obj: EditableObjectNode) -> void:
 func _handle_gameplay_click(obj: EditableObjectNode) -> void:
 	match obj.group_id:
 		"screen":
+			# View income is granted by editable_object._handle_gameplay_input
+			# when the clicked object is the "view" image. The middleman here
+			# only triggers the surrounding-screen-objects pop animation.
 			_animate_screen_objects()
-			GameManager.add_views(1)
 		"upgrade":
 			var upgrade_id := obj.source_path.get_file().get_basename().to_lower()
 			if UpgradeManager.UPGRADES.has(upgrade_id):

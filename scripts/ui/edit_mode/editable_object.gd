@@ -259,7 +259,14 @@ func _gui_input(event: InputEvent) -> void:
 func _handle_gameplay_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		get_viewport().set_input_as_handled()
+		if _is_view_object():
+			GameManager.on_view_clicked()
+			animate_screen_click()
 		object_clicked.emit(self)
+
+func _is_view_object() -> bool:
+	return group_id == "screen" \
+		and source_path.get_file().get_basename().to_lower() == "view"
 
 func _on_mouse_entered() -> void:
 	if not _gameplay_mode or group_id != "upgrade" or is_all_upgrades():

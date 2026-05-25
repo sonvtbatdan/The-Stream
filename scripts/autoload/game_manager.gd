@@ -2,94 +2,64 @@ extends Node
 
 signal views_changed(new_views: int)
 signal subs_changed(new_subs: int)
-signal cash_changed(new_cash: float)
-signal goal_reached(goal: int)
 
-var views: int = 0
-var subs: int = 0
-var cash: float = 1000.0
-var run: int = 1
-var elapsed_time: float = 0.0
-var current_goal: int = 100
+# Internal storage is float so passive sub growth can accumulate fractionally
+# below 1 sub/sec without ever appearing to "tick" at integer-only resolution.
+# Signals still emit ints so existing label code (str(v) on the signal arg)
+# is unchanged.
+var _views: float = 0.0
+var _subs: float = 0.0
+var _last_views_int: int = 0
+var _last_subs_int: int = 0
 
-# Passive view generation components (tracked separately for botupgrade)
-var _non_bot_vps: float = 1.0
-var _bot_base_vps: float = 0.0
-var _bot_efficiency: float = 1.0
-var _view_mult: float = 1.0
-var _boost_mult: float = 1.0
-var _boost_timer: float = 0.0
-var _fractional_views: float = 0.0
+var views: int:
+	get: return int(_views)
+var subs: int:
+	get: return int(_subs)
 
-var cash_per_view: float = 0.01  # 100 views = $1
+# Per-click view yield. Increased by future upgrades.
+var click_power: float = 1.0
 
-var views_per_second: float:
-	get: return (_non_bot_vps + _bot_base_vps * _bot_efficiency) * _view_mult * _boost_mult
+# Multiplier on the passive sub-growth rate. Future upgrades raise this.
+var parasocial: float = 1.0
 
 func _process(delta: float) -> void:
-	elapsed_time += delta
-	if _boost_timer > 0.0:
-		_boost_timer = maxf(0.0, _boost_timer - delta)
-		if _boost_timer == 0.0:
-			_boost_mult = 1.0
-	_tick_passive_views(delta)
+	# Log-scaled passive sub growth so the rate doesn't explode at very high
+	# view counts. Calibration points:
+	#   100 views  → ~0.05 subs/sec  (1 sub every ~20s)
+	#   10k views  → ~0.20 subs/sec  (1 sub every ~5s)
+	#   1M views   → ~0.60 subs/sec
+	var sub_rate: float = 0.05 * log(maxf(_views, 1.0)) / log(10.0) * parasocial
+	_subs += sub_rate * delta
+	_emit_if_changed()
 
-func _tick_passive_views(delta: float) -> void:
-	var vps := views_per_second
-	if vps > 0.0:
-		_fractional_views += vps * delta
-		var gained := int(_fractional_views)
-		if gained > 0:
-			_fractional_views -= float(gained)
-			add_views(gained)
+# Player clicked the on-screen view image. Single source of click-reward truth.
+func on_view_clicked() -> void:
+	_views += click_power
+	_emit_if_changed()
 
+# Bulk view adds (e.g. arena drifters destroyed by the streamer pad). Kept as
+# a public method so callers other than the click handler can still grant views.
 func add_views(amount: int) -> void:
-	views += amount
-	emit_signal("views_changed", views)
-	add_cash(float(amount) * cash_per_view)
-	var new_sub_total := views / 5
-	if new_sub_total > subs:
-		subs = new_sub_total
-		emit_signal("subs_changed", subs)
-	if views >= current_goal:
-		emit_signal("goal_reached", current_goal)
+	if amount == 0:
+		return
+	_views += float(amount)
+	_emit_if_changed()
 
-func add_cash(amount: float) -> void:
-	cash += amount
-	emit_signal("cash_changed", cash)
-
-func spend_cash(amount: float) -> bool:
-	if cash < amount:
-		return false
-	cash -= amount
-	emit_signal("cash_changed", cash)
-	return true
-
+# Event-driven sub gain (e.g. LIKE drifter destroyed). Bypasses the log-rate
+# accumulator so the gain is immediate and visible.
 func add_bonus_subs(amount: int) -> void:
-	subs += amount
-	emit_signal("subs_changed", subs)
+	if amount == 0:
+		return
+	_subs += float(amount)
+	_emit_if_changed()
 
-func remove_subs(amount: int) -> void:
-	subs = maxi(0, subs - amount)
-	emit_signal("subs_changed", subs)
-
-func add_non_bot_vps(amount: float) -> void:
-	_non_bot_vps += amount
-
-func add_bot_vps(amount: float) -> void:
-	_bot_base_vps += amount
-
-func add_bot_efficiency(extra: float) -> void:
-	_bot_efficiency += extra
-
-func apply_view_multiplier(pct: float) -> void:
-	_view_mult *= (1.0 + pct)
-
-func apply_boost(pct: float, duration: float) -> void:
-	_boost_mult = 1.0 + pct
-	_boost_timer = duration
-
-func get_time_string() -> String:
-	var minutes := int(elapsed_time) / 60
-	var seconds := int(elapsed_time) % 60
-	return "%02d:%02d" % [minutes, seconds]
+func _emit_if_changed() -> void:
+	var vi := int(_views)
+	var si := int(_subs)
+	if vi != _last_views_int:
+		_last_views_int = vi
+		views_changed.emit(vi)
+	if si != _last_subs_int:
+		_last_subs_int = si
+		subs_changed.emit(si)

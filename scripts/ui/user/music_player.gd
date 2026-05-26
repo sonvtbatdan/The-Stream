@@ -82,6 +82,7 @@ func _build_ui() -> void:
 	_title_lbl.set_text("—")
 	_title_lbl.set_style(Color(0.8, 0.9, 1.0), 12)
 	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_title_lbl)
 
 	# ── Controls row ─────────────────────────────────────────────
@@ -280,6 +281,7 @@ class _MarqueeLabel extends Control:
 		_lbl = Label.new()
 		_lbl.position = Vector2.ZERO
 		_lbl.clip_text = false
+		_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _ready() -> void:
 		clip_contents = true

@@ -75,7 +75,7 @@ text = "Screen"
 [node name="UpgradeBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
 layout_mode = 2
 toggle_mode = true
-text = "Upgrade"
+text = "Tool"
 
 [node name="VisualBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
 layout_mode = 2

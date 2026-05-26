@@ -13,7 +13,7 @@ theme_override_constants/separation = 8
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Upgrade"
+text = "Tool"
 
 [node name="CostLabel" type="Label" parent="HBox"]
 unique_name_in_owner = true

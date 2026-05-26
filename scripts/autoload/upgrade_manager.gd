@@ -18,7 +18,7 @@ func try_purchase(upgrade_id: String) -> bool:
 	if not UPGRADES.has(upgrade_id):
 		return false
 	var data: Dictionary = UPGRADES[upgrade_id]
-	if not GameManager.spend_cash(data["cost"]):
+	if not GameManager.spend_views(int(data["cost"])):
 		return false
 	owned[upgrade_id] = owned.get(upgrade_id, 0) + 1
 	_apply_upgrade(data)
@@ -43,7 +43,7 @@ func get_owned_count(upgrade_id: String) -> int:
 func can_afford(upgrade_id: String) -> bool:
 	if not UPGRADES.has(upgrade_id):
 		return false
-	return GameManager.cash >= UPGRADES[upgrade_id]["cost"]
+	return GameManager.stable_views >= int(UPGRADES[upgrade_id]["cost"])
 
 func get_price(upgrade_id: String) -> float:
 	if not UPGRADES.has(upgrade_id):

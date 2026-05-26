@@ -152,6 +152,20 @@ func _process(delta: float) -> void:
 # Bulk grants — kept for comment_panel.gd consumers
 # ---------------------------------------------------------------------------
 
+# Spend views (e.g. on a tool purchase). Subtracts from the view accumulator;
+# returns false if there aren't enough stable views, in which case nothing is
+# mutated. _passive_views may go negative when the deduction exceeds what was
+# accumulated post-subs — stable_views stays consistent either way because the
+# pre-check guarantees subs + passive >= amount at the moment of purchase.
+func spend_views(amount: int) -> bool:
+	if amount <= 0:
+		return true
+	if stable_views < amount:
+		return false
+	_passive_views -= float(amount)
+	_emit_steady_signals()
+	return true
+
 func add_bonus_subs(amount: int) -> void:
 	if amount == 0:
 		return

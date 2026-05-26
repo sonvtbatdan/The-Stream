@@ -2,15 +2,16 @@ class_name EditableObjectNode
 extends Control
 
 signal transform_ended(obj: Control)
+signal transform_motion(obj: EditableObjectNode)
 signal object_clicked(obj: EditableObjectNode)
 
 const HANDLE_VISUAL := 10.0
 const HANDLE_HIT    := 22.0
 const MIN_SIZE := Vector2(30.0, 30.0)
-const ALL_UPGRADES_MARKER := "res://__all_upgrades__"
+const GROUP_LAYER_MARKER := "res://__group_layer__"
 
-func is_all_upgrades() -> bool:
-	return source_path == ALL_UPGRADES_MARKER
+func is_group_layer() -> bool:
+	return source_path == GROUP_LAYER_MARKER
 
 @onready var texture_rect: TextureRect = $TextureRect
 
@@ -36,6 +37,7 @@ var selected := false:
 
 var group_id := ""
 var source_path := ""
+var layer_visible := true
 
 func _ready() -> void:
 	_price_label = Label.new()
@@ -89,7 +91,7 @@ func _setup_counter_label() -> void:
 	add_child(_counter_label)
 
 func _setup_price_label() -> void:
-	if group_id != "upgrade" or is_all_upgrades():
+	if group_id != "active" or is_group_layer():
 		return
 	var upgrade_id := source_path.get_file().get_basename().to_lower()
 	if UpgradeManager.UPGRADES.has(upgrade_id):
@@ -98,7 +100,7 @@ func _setup_price_label() -> void:
 		_price_label.size = Vector2(size.x, 30.0)
 
 func _setup_desc_panel() -> void:
-	if group_id != "upgrade" or is_all_upgrades():
+	if group_id != "active" or is_group_layer():
 		return
 	var upgrade_id := source_path.get_file().get_basename().to_lower()
 	if not UpgradeManager.UPGRADES.has(upgrade_id):
@@ -163,14 +165,15 @@ func set_gameplay_mode(v: bool) -> void:
 		_counter_label.visible = v
 	if not v:
 		_hide_hover_immediate()
-	# Upgrade-group sprites (including the synthetic all_upgrades control) are
-	# editor-only handles now — purchasing happens via the ToolsList in main.tscn,
-	# so these are masked in gameplay but stay visible+placeable in edit mode.
-	if group_id == "upgrade":
-		visible = not v
+	# Group layer is an editor-only handle — always hidden in gameplay.
+	# All other objects respect layer_visible (eye toggle).
+	if is_group_layer() and v:
+		visible = false
+	else:
+		visible = layer_visible
 
 func get_state() -> Dictionary:
-	return { "path": source_path, "group": group_id, "pos": position, "size": size, "z_index": z_index }
+	return { "path": source_path, "group": group_id, "pos": position, "size": size, "z_index": z_index, "layer_visible": layer_visible }
 
 func apply_state(state: Dictionary) -> void:
 	position = state["pos"]
@@ -254,8 +257,12 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		if _dragging:
 			position = _drag_start_pos + (get_global_mouse_position() - _drag_start_mouse)
+			if is_group_layer():
+				transform_motion.emit(self)
 		elif _resizing:
 			_apply_resize()
+			if is_group_layer():
+				transform_motion.emit(self)
 			queue_redraw()
 
 func _handle_gameplay_input(event: InputEvent) -> void:
@@ -264,7 +271,7 @@ func _handle_gameplay_input(event: InputEvent) -> void:
 		object_clicked.emit(self)
 
 func _on_mouse_entered() -> void:
-	if not _gameplay_mode or group_id != "upgrade" or is_all_upgrades():
+	if not _gameplay_mode or group_id != "active" or is_group_layer():
 		return
 	var upgrade_id := source_path.get_file().get_basename().to_lower()
 	if not UpgradeManager.UPGRADES.has(upgrade_id):
@@ -272,7 +279,7 @@ func _on_mouse_entered() -> void:
 	_show_hover()
 
 func _on_mouse_exited() -> void:
-	if not _gameplay_mode or group_id != "upgrade" or is_all_upgrades():
+	if not _gameplay_mode or group_id != "active" or is_group_layer():
 		return
 	_hide_hover()
 

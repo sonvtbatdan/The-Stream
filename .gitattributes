@@ -1,2 +1,4 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+tools/mpv.exe filter=lfs diff=lfs merge=lfs -text
+tools/yt-dlp.exe filter=lfs diff=lfs merge=lfs -text

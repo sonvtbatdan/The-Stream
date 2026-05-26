@@ -10,7 +10,7 @@ signal z_indices_changed
 
 const ROW_HEIGHT := 56.0
 const THUMB_SIZE := 48.0
-const ALL_UPGRADES_MARKER := "res://__all_upgrades__"
+const GROUP_LAYER_MARKER := "res://__group_layer__"
 
 @onready var title_label: Label = $VBox/TitleLabel
 @onready var item_vbox: VBoxContainer = $VBox/Scroll/ItemList
@@ -38,7 +38,7 @@ func set_group_label(group: String) -> void:
 
 func refresh(placed_objects: Array) -> void:
 	_clear()
-	# Pin the all_upgrades control row at the top; render all other rows
+	# Pin the Group Layer row at the top; render all other rows
 	# below it in their original order.
 	var pinned: EditableObjectNode = null
 	for obj in placed_objects:
@@ -61,7 +61,7 @@ func add_placed_object(obj: EditableObjectNode) -> void:
 	_update_z_indices()
 
 func _is_pinned(obj: EditableObjectNode) -> bool:
-	return obj != null and obj.source_path == ALL_UPGRADES_MARKER
+	return obj != null and obj.source_path == GROUP_LAYER_MARKER
 
 func _move_pinned_to_top() -> void:
 	for i in _rows.size():
@@ -118,11 +118,33 @@ func _make_row(obj: EditableObjectNode, tex: Texture2D) -> PanelContainer:
 	hbox.add_child(thumb)
 
 	var lbl := Label.new()
-	lbl.text = obj.source_path.get_file().get_basename() if obj.source_path != "" else "object"
+	var _display_name: String
+	if obj.source_path == GROUP_LAYER_MARKER:
+		_display_name = "Group Layer"
+	elif obj.source_path != "":
+		_display_name = obj.source_path.get_file().get_basename()
+	else:
+		_display_name = "object"
+	lbl.text = _display_name
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_child(lbl)
+
+	var eye_btn := Button.new()
+	eye_btn.toggle_mode = true
+	eye_btn.button_pressed = obj.layer_visible
+	eye_btn.text = "👁"
+	eye_btn.flat = true
+	eye_btn.custom_minimum_size = Vector2(30, 0)
+	eye_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	eye_btn.modulate = Color.WHITE if obj.layer_visible else Color(1.0, 1.0, 1.0, 0.3)
+	eye_btn.toggled.connect(func(pressed: bool) -> void:
+		obj.layer_visible = pressed
+		obj.visible = pressed
+		eye_btn.modulate = Color.WHITE if pressed else Color(1.0, 1.0, 1.0, 0.3)
+	)
+	hbox.add_child(eye_btn)
 
 	panel.gui_input.connect(_on_row_gui_input.bind(panel))
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -154,7 +176,7 @@ func _check_swap() -> void:
 	var cur_idx := _row_index(_dragging_row)
 	if cur_idx < 0:
 		return
-	# The pinned all_upgrades row never moves and other rows cannot cross it.
+	# The pinned Group Layer row never moves and other rows cannot cross it.
 	if _is_pinned(_rows[cur_idx]["canvas_obj"]):
 		return
 	var mouse_y := get_global_mouse_position().y

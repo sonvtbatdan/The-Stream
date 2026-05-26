@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud/view_sub_bar.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/hud/comment_panel.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/main.gd" id="4"]
 [ext_resource type="PackedScene" path="res://scenes/ui/edit_mode/edit_mode.tscn" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/upgrade/upgrade_list.gd" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/ui/user/user_panel.tscn" id="7"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_panel"]
 
@@ -339,12 +340,15 @@ unique_name_in_owner = true
 layout_mode = 2
 text = ""
 
+[node name="UserPanel" parent="." instance=ExtResource("7")]
+
 [node name="EditMode" parent="." instance=ExtResource("5")]
 
 [connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/ScreenBtn" to="EditMode" method="_set_group" binds=["screen"]]
-[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/UpgradeBtn" to="EditMode" method="_set_group" binds=["upgrade"]]
-[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/VisualBtn" to="EditMode" method="_set_group" binds=["visual"]]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/UpgradeBtn" to="EditMode" method="_set_group" binds=["active"]]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/VisualBtn" to="EditMode" method="_set_group" binds=["passive"]]
 [connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/StatBtn" to="EditMode" method="_set_group" binds=["stat"]]
+[connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/UserBtn" to="EditMode" method="_on_user_btn_pressed"]
 [connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/SaveBtn" to="EditMode" method="_on_save_pressed"]
 [connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/UploadBtn" to="EditMode" method="_on_upload_pressed"]
 [connection signal="pressed" from="EditMode/SidePanel/VBox/TopHBox/ButtonsColumn/DeleteBtn" to="EditMode" method="_on_delete_pressed"]

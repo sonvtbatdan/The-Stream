@@ -163,8 +163,10 @@ func set_gameplay_mode(v: bool) -> void:
 		_counter_label.visible = v
 	if not v:
 		_hide_hover_immediate()
-	# The all_upgrades control object is an editor-only handle.
-	if is_all_upgrades():
+	# Upgrade-group sprites (including the synthetic all_upgrades control) are
+	# editor-only handles now — purchasing happens via the ToolsList in main.tscn,
+	# so these are masked in gameplay but stay visible+placeable in edit mode.
+	if group_id == "upgrade":
 		visible = not v
 
 func get_state() -> Dictionary:

@@ -1,11 +1,24 @@
-extends PanelContainer
+extends Button
 
-signal pressed(upgrade_id: String)
+signal pressed_id(upgrade_id: String)
+
+# Placeholder descriptions per tool id. Replace with real text via the
+# UpgradeManager catalog later — the catalog's `desc` field is preferred when
+# present and non-empty.
+const PLACEHOLDER_DESCS := {
+	"fanreact":   "Friends auto-react to your stream every few seconds.",
+	"fanview":    "Friends idle in chat, watching passively.",
+	"botreact":   "Cheap bots spam reactions to inflate engagement.",
+	"botview":    "Idle view-bots pad your viewer count.",
+	"algorimth":  "The algorithm pushes your stream to more people.",
+	"ad":         "Pay for a short discoverability boost.",
+	"botupgrade": "Bot pipeline gets smarter — same bots, more views.",
+}
 
 @onready var name_label: Label = %NameLabel
-@onready var cost_label: Label = %CostLabel
+@onready var price_label: Label = %PriceLabel
+@onready var desc_label: Label = %DescLabel
 @onready var count_label: Label = %CountLabel
-@onready var buy_button: Button = %BuyButton
 
 var upgrade_id: String = ""
 
@@ -13,25 +26,32 @@ func setup(id: String) -> void:
 	upgrade_id = id
 	var data: Dictionary = UpgradeManager.UPGRADES[id]
 	name_label.text = data["name"]
+	desc_label.text = String(data.get("desc", "")) if data.get("desc", "") != "" else PLACEHOLDER_DESCS.get(id, "Placeholder description.")
+	_refresh_price()
+	_refresh_count()
+	# Affordability re-check on the non-noisy stable view total so the row
+	# doesn't flicker enabled/disabled with the displayed counter's jitter.
+	GameManager.stable_views_changed.connect(_on_stable_views_changed)
+	_on_stable_views_changed(GameManager.stable_views)
+	pressed.connect(_on_pressed)
+
+func _refresh_price() -> void:
+	var data: Dictionary = UpgradeManager.UPGRADES[upgrade_id]
 	var cost_text := "%d views" % int(data["cost"])
 	if data.get("cost_type") == "per_credit":
 		cost_text += "/credit"
-	cost_label.text = cost_text
-	_refresh_count()
-	# Listen to stable_views (non-noisy) so the Buy button doesn't flicker
-	# as the displayed counter jitters around the affordability threshold.
-	GameManager.stable_views_changed.connect(_on_stable_views_changed)
-	_on_stable_views_changed(GameManager.stable_views)
+	price_label.text = cost_text
 
 func _refresh_count() -> void:
 	var count := UpgradeManager.get_owned_count(upgrade_id)
-	count_label.text = str(count) if count > 0 else ""
+	count_label.text = "x%d" % count if count > 0 else ""
 
 func _on_stable_views_changed(_v: int) -> void:
 	var cost: int = int(UpgradeManager.UPGRADES[upgrade_id]["cost"])
-	buy_button.disabled = GameManager.stable_views < cost
+	disabled = GameManager.stable_views < cost
 
-func _on_buy_button_pressed() -> void:
+func _on_pressed() -> void:
 	if UpgradeManager.try_purchase(upgrade_id):
 		_refresh_count()
-		emit_signal("pressed", upgrade_id)
+		_refresh_price()
+		pressed_id.emit(upgrade_id)

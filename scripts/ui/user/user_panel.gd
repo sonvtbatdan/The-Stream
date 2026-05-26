@@ -31,6 +31,18 @@ func _ready() -> void:
 	_build()
 	_load_position()
 	set_edit_mode(false)
+	_add_debug_sound_btn()
+
+func _add_debug_sound_btn() -> void:
+	var btn := Button.new()
+	btn.text = "♪  SOUND TEST"
+	btn.custom_minimum_size = Vector2(240, 80)
+	btn.size = Vector2(240, 80)
+	# Center of 1440×780
+	btn.position = Vector2((1440 - 240) / 2.0, (780 - 80) / 2.0)
+	btn.add_theme_font_size_override("font_size", 22)
+	btn.pressed.connect(_music._on_sound_test_pressed)
+	add_child(btn)   # child of CanvasLayer, floats freely over everything
 
 func _build() -> void:
 	_root = Panel.new()

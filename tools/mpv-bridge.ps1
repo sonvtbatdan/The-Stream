@@ -18,42 +18,36 @@ function Log($msg) {
 
 Set-Content -Path $logFile -Value "" -Encoding utf8   # clear on each run
 Log "=== bridge start  port=$TcpPort ==="
-Log "toolsDir : $toolsDir"
-Log "mpv.exe  : $mpvExe  exists=$([System.IO.File]::Exists($mpvExe))"
-Log "yt-dlp   : $ytdlpExe  exists=$([System.IO.File]::Exists($ytdlpExe))"
+
+# ── Kill any orphaned mpv from a previous session ─────────────────────────────
+$old = Get-Process mpv -ErrorAction SilentlyContinue
+if ($old) {
+    Log "Killing $($old.Count) orphaned mpv process(es)"
+    $old | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 400   # let the pipe and port free up
+}
 
 # ── Launch mpv via ProcessStartInfo (precise argument control) ────────────────
-$mpvLog = Join-Path $toolsDir "mpv-ipc.log"
 try {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName       = $mpvExe
-    $psi.Arguments      = "--no-video --no-terminal --force-window=no --idle=yes --input-ipc-server=$pipeName `"--log-file=$mpvLog`""
+    $psi.Arguments      = "--no-video --no-terminal --force-window=no --idle=yes --input-ipc-server=$pipeName"
     $psi.WindowStyle    = [System.Diagnostics.ProcessWindowStyle]::Hidden
     $psi.CreateNoWindow = $true
     $psi.UseShellExecute = $false
-    # Add tools dir to PATH so mpv can find yt-dlp.exe without --ytdl-path flag
     $psi.EnvironmentVariables["PATH"] = "$toolsDir;" + $psi.EnvironmentVariables["PATH"]
     $mpv = [System.Diagnostics.Process]::Start($psi)
-    Log "mpv launched  PID=$($mpv.Id)"
-    Log "mpv args: $($psi.Arguments)"
+    Log "mpv PID=$($mpv.Id)"
 } catch {
     Log "ERROR launching mpv: $_"
     exit 1
 }
 
-# ── Check mpv is still alive + log its own IPC messages ──────────────────────
-Start-Sleep -Milliseconds 2500
+# ── Quick sanity check: mpv should survive at least 1 second ─────────────────
+Start-Sleep -Milliseconds 1000
 if ($mpv.HasExited) {
-    Log "ERROR: mpv exited immediately! ExitCode=$($mpv.ExitCode)"
-    if (Test-Path $mpvLog) {
-        Get-Content $mpvLog | Select-Object -Last 30 | ForEach-Object { Log "  mpv> $_" }
-    }
+    Log "ERROR: mpv exited immediately (ExitCode=$($mpv.ExitCode))"
     exit 1
-}
-Log "mpv alive after 2.5s"
-if (Test-Path $mpvLog) {
-    Get-Content $mpvLog | Where-Object { $_ -match "ipc|pipe|socket|error|warn" } |
-        ForEach-Object { Log "  mpv> $_" }
 }
 
 # ── Connect to mpv named pipe (retry up to 12 s) ──────────────────────────────
@@ -96,8 +90,11 @@ Log "Pipe writer ready"
 try {
     $listener = [System.Net.Sockets.TcpListener]::new(
         [System.Net.IPAddress]::Loopback, $TcpPort)
+    $listener.Server.SetSocketOption(
+        [System.Net.Sockets.SocketOptionLevel]::Socket,
+        [System.Net.Sockets.SocketOptionName]::ReuseAddress, $true)
     $listener.Start()
-    Log "TCP listener started on port $TcpPort"
+    Log "TCP listener on port $TcpPort"
 } catch {
     Log "ERROR starting TCP listener: $_"
     $pipeWriter.Close(); $pipe.Close()

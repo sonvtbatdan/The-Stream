@@ -218,27 +218,41 @@ func _on_start_failed(reason: String) -> void:
 	_status_lbl.text = reason
 
 func _on_sound_test_pressed() -> void:
-	# Plays a 440 Hz beep through Godot's own audio to confirm the pipeline works.
+	# Debug: show audio bus state
+	var bus_count := AudioServer.get_bus_count()
+	var master_vol := AudioServer.get_bus_volume_db(0)
+	var master_mute := AudioServer.is_bus_mute(0)
+	_status_lbl.text = "buses:%d master:%.0fdB mute:%s" % [bus_count, master_vol, master_mute]
+
+	# Build a 440 Hz sine wave as PCM into AudioStreamWAV (no push_frame timing issues)
+	var sample_rate := 44100
+	var duration    := 0.6
+	var n_samples   := int(sample_rate * duration)
+	var data        := PackedByteArray()
+	data.resize(n_samples * 2)  # 16-bit mono
+	for i in n_samples:
+		var t      := float(i) / sample_rate
+		var env    := 1.0 - t / duration
+		var sample := int(sin(TAU * 440.0 * t) * 0.8 * env * 32767.0)
+		data[i * 2]     = sample & 0xFF
+		data[i * 2 + 1] = (sample >> 8) & 0xFF
+
+	var wav := AudioStreamWAV.new()
+	wav.data      = data
+	wav.format    = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate  = sample_rate
+	wav.stereo    = false
+	wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
+
 	var player := AudioStreamPlayer.new()
+	player.volume_db = 0.0
+	player.bus = "Master"
 	add_child(player)
-	var gen := AudioStreamGenerator.new()
-	gen.mix_rate      = 44100.0
-	gen.buffer_length = 0.5
-	player.stream = gen
+	player.stream = wav
 	player.play()
-	var pb := player.get_stream_playback() as AudioStreamGeneratorPlayback
-	if pb:
-		var n := int(gen.mix_rate * gen.buffer_length)
-		for i in n:
-			var t   := float(i) / gen.mix_rate
-			var env := 1.0 - t / gen.buffer_length
-			var s   := sin(TAU * 440.0 * t) * 0.4 * env
-			pb.push_frame(Vector2(s, s))
-	_status_lbl.text = "♪ beep — did you hear it?"
+
 	await get_tree().create_timer(0.8).timeout
 	player.queue_free()
-	if _status_lbl.text == "♪ beep — did you hear it?":
-		_status_lbl.text = ""
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

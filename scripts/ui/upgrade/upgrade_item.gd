@@ -26,35 +26,34 @@ func setup(id: String) -> void:
 	var data: Dictionary = UpgradeManager.UPGRADES[id]
 	name_label.text = data["name"]
 	desc_label.text = PLACEHOLDER_DESCS.get(id, "Placeholder description.")
-	_refresh_price()
-	_refresh_count()
 	# Affordability re-check on the non-noisy stable view total so the row
 	# doesn't flicker enabled/disabled with the displayed counter's jitter.
 	GameManager.stable_views_changed.connect(_on_stable_views_changed)
-	_on_stable_views_changed(GameManager.stable_views)
 	pressed.connect(_on_pressed)
+	_refresh_state()
 
-func _refresh_price() -> void:
-	var data: Dictionary = UpgradeManager.UPGRADES[upgrade_id]
-	var cost_text := "%d views" % int(data["cost"])
-	if data.get("cost_type") == "per_credit":
+# Single source of truth for the row's price label, count label, and disabled
+# / dim state. Called on setup, on every affordability change, and after each
+# successful purchase (which bumps both the count and the next price).
+func _refresh_state() -> void:
+	var price: int = UpgradeManager.get_current_price(upgrade_id)
+	var cost_text := "%d views" % price
+	if UpgradeManager.UPGRADES[upgrade_id].get("cost_type") == "per_credit":
 		cost_text += "/credit"
 	price_label.text = cost_text
 
-func _refresh_count() -> void:
-	var count := UpgradeManager.get_owned_count(upgrade_id)
+	var count: int = UpgradeManager.get_owned_count(upgrade_id)
 	count_label.text = "x%d" % count if count > 0 else ""
 
-func _on_stable_views_changed(_v: int) -> void:
-	var cost: int = int(UpgradeManager.UPGRADES[upgrade_id]["cost"])
-	var can_afford: bool = GameManager.stable_views >= cost
+	var can_afford: bool = GameManager.stable_views >= price
 	disabled = not can_afford
-	# modulate cascades to all children, so the labels dim alongside the
-	# Button's own rendering — gives the whole row a uniform grayed-out look.
+	# modulate cascades to children so the labels dim alongside the Button.
 	modulate = Color.WHITE if can_afford else Color(0.5, 0.5, 0.5, 1.0)
+
+func _on_stable_views_changed(_v: int) -> void:
+	_refresh_state()
 
 func _on_pressed() -> void:
 	if UpgradeManager.try_purchase(upgrade_id):
-		_refresh_count()
-		_refresh_price()
+		_refresh_state()
 		pressed_id.emit(upgrade_id)

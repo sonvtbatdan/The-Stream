@@ -14,16 +14,27 @@ const UPGRADES := {
 	"botupgrade": { "name": "Bot Upgrade",    "cost": 10000.0, "bot_efficiency_bonus": 0.05,                 "desc": "Permanently increases the efficiency of Bot React and Bot View by 5%." },
 }
 
+const PRICE_SCALE := 1.15   # each new unit costs 15% more than the previous
+
 func try_purchase(upgrade_id: String) -> bool:
 	if not UPGRADES.has(upgrade_id):
 		return false
 	var data: Dictionary = UPGRADES[upgrade_id]
-	if not GameManager.spend_views(int(data["cost"])):
+	if not GameManager.spend_views(get_current_price(upgrade_id)):
 		return false
 	owned[upgrade_id] = owned.get(upgrade_id, 0) + 1
 	_apply_upgrade(data)
 	emit_signal("upgrade_purchased", upgrade_id)
 	return true
+
+# Cost of the next purchase: baseprice * 1.15^(units_already_owned).
+# Owning 0 units → first unit at baseprice; owning 1 → next at baseprice*1.15.
+func get_current_price(upgrade_id: String) -> int:
+	if not UPGRADES.has(upgrade_id):
+		return 0
+	var base: float = float(UPGRADES[upgrade_id]["cost"])
+	var n: int = get_owned_count(upgrade_id)
+	return int(ceil(base * pow(PRICE_SCALE, n)))
 
 func _apply_upgrade(data: Dictionary) -> void:
 	if data.has("non_bot_vps"):
@@ -43,7 +54,7 @@ func get_owned_count(upgrade_id: String) -> int:
 func can_afford(upgrade_id: String) -> bool:
 	if not UPGRADES.has(upgrade_id):
 		return false
-	return GameManager.stable_views >= int(UPGRADES[upgrade_id]["cost"])
+	return GameManager.stable_views >= get_current_price(upgrade_id)
 
 func get_price(upgrade_id: String) -> float:
 	if not UPGRADES.has(upgrade_id):

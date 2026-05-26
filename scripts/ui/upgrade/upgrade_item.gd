@@ -25,7 +25,7 @@ func setup(id: String) -> void:
 # successful purchase (which bumps both the count and the next price).
 func _refresh_state() -> void:
 	var price: int = UpgradeManager.get_current_price(upgrade_id)
-	var cost_text := "%d views" % price
+	var cost_text := GameManager.format_count(price) + " views"
 	if UpgradeManager.UPGRADES[upgrade_id].get("cost_type") == "per_credit":
 		cost_text += "/credit"
 	price_label.text = cost_text

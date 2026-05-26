@@ -288,6 +288,40 @@ func _emit_if_changed() -> void:
 func get_vps_estimate() -> float:
 	return K_SUB * (log(maxf(_subs + _passive_views, 5.0)) / log(5.0))
 
+# Human-readable count: below 1000 prints as-is, otherwise scales to thousand
+# / million / billion / trillion / quadrillion with up to 2 decimal places
+# (trailing zeros and dangling decimal points trimmed).
+# Examples: 999 -> "999", 1_000 -> "1 thousand", 1_280_000 -> "1.28 million".
+func format_count(n: int) -> String:
+	var abs_n: int = absi(n)
+	if abs_n < 1000:
+		return str(n)
+	var divisor: float
+	var suffix: String
+	if abs_n < 1_000_000:
+		divisor = 1_000.0
+		suffix = "thousand"
+	elif abs_n < 1_000_000_000:
+		divisor = 1_000_000.0
+		suffix = "million"
+	elif abs_n < 1_000_000_000_000:
+		divisor = 1_000_000_000.0
+		suffix = "billion"
+	elif abs_n < 1_000_000_000_000_000:
+		divisor = 1_000_000_000_000.0
+		suffix = "trillion"
+	else:
+		divisor = 1_000_000_000_000_000.0
+		suffix = "quadrillion"
+	var value: float = float(n) / divisor
+	var text: String = "%.2f" % value
+	if text.contains("."):
+		while text.ends_with("0"):
+			text = text.substr(0, text.length() - 1)
+		if text.ends_with("."):
+			text = text.substr(0, text.length() - 1)
+	return text + " " + suffix
+
 func get_donation_rate_estimate() -> float:
 	return C_CONST * pow(maxf(_subs, 1.0), K_EXP)
 
@@ -297,12 +331,12 @@ func get_donation_rate_estimate() -> float:
 
 func render_stat_template() -> String:
 	return stat_template \
-		.replace("{views}", str(views)) \
-		.replace("{subs}", str(subs)) \
+		.replace("{views}", format_count(views)) \
+		.replace("{subs}", format_count(subs)) \
 		.replace("{click_power}", str(click_power)) \
 		.replace("{parasocial}", str(parasocial)) \
-		.replace("{cash}", str(int(cash))) \
-		.replace("{goal}", str(current_goal)) \
+		.replace("{cash}", format_count(int(cash))) \
+		.replace("{goal}", format_count(current_goal)) \
 		.replace("{run}", str(run)) \
 		.replace("{time}", get_time_string())
 

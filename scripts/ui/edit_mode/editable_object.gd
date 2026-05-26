@@ -66,13 +66,13 @@ func _setup_counter_label() -> void:
 	var base := source_path.get_file().get_basename().to_lower()
 	var initial := ""
 	if base == "view":
-		initial = str(GameManager.views)
+		initial = GameManager.format_count(GameManager.views)
 		GameManager.views_changed.connect(func(v: int) -> void:
-			if is_instance_valid(_counter_label): _counter_label.text = str(v))
+			if is_instance_valid(_counter_label): _counter_label.text = GameManager.format_count(v))
 	elif base == "sub":
-		initial = str(GameManager.subs)
+		initial = GameManager.format_count(GameManager.subs)
 		GameManager.subs_changed.connect(func(v: int) -> void:
-			if is_instance_valid(_counter_label): _counter_label.text = str(v))
+			if is_instance_valid(_counter_label): _counter_label.text = GameManager.format_count(v))
 	else:
 		return
 	_counter_label = Label.new()

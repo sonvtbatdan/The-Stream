@@ -245,56 +245,17 @@ layout_mode = 2
 text = "Stat"
 horizontal_alignment = 1
 
-[node name="GoalRow" type="HBoxContainer" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
+[node name="GoalInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2
-theme_override_constants/separation = 6
+text = "Goal: 100 Views"
 
-[node name="GoalLabel" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox/GoalRow"]
+[node name="CashInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(60, 0)
-text = "Goal"
-vertical_alignment = 1
+text = "Cash: $0.00"
 
-[node name="GoalSpin" type="SpinBox" parent="SidePanel/VBox/StatInfoPanel/StatVBox/GoalRow"]
+[node name="RunInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2
-size_flags_horizontal = 3
-min_value = 0.0
-max_value = 999999.0
-step = 1.0
-
-[node name="CashRow" type="HBoxContainer" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="CashLabel" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox/CashRow"]
-layout_mode = 2
-custom_minimum_size = Vector2(60, 0)
-text = "Cash $"
-vertical_alignment = 1
-
-[node name="CashSpin" type="SpinBox" parent="SidePanel/VBox/StatInfoPanel/StatVBox/CashRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-min_value = 0.0
-max_value = 999999.0
-step = 0.01
-
-[node name="RunRow" type="HBoxContainer" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="RunLabel" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox/RunRow"]
-layout_mode = 2
-custom_minimum_size = Vector2(60, 0)
-text = "Run"
-vertical_alignment = 1
-
-[node name="RunSpin" type="SpinBox" parent="SidePanel/VBox/StatInfoPanel/StatVBox/RunRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-min_value = 1.0
-max_value = 9999.0
-step = 1.0
+text = "Run: 1"
 
 [node name="TimeInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2

@@ -20,11 +20,6 @@ const ALL_UPGRADES_DEFAULT_POS := Vector2(20.0, 20.0)
 @onready var file_dialog: FileDialog = $FileDialog
 @onready var unsaved_dialog: Window = $UnsavedDialog
 
-@onready var goal_spin: SpinBox = $SidePanel/VBox/StatInfoPanel/StatVBox/GoalRow/GoalSpin
-@onready var cash_spin: SpinBox = $SidePanel/VBox/StatInfoPanel/StatVBox/CashRow/CashSpin
-@onready var run_spin: SpinBox = $SidePanel/VBox/StatInfoPanel/StatVBox/RunRow/RunSpin
-@onready var time_label: Label = $SidePanel/VBox/StatInfoPanel/StatVBox/TimeInfo
-
 @onready var btn_screen: Button   = $SidePanel/VBox/TopHBox/ButtonsColumn/ScreenBtn
 @onready var btn_upgrade: Button  = $SidePanel/VBox/TopHBox/ButtonsColumn/UpgradeBtn
 @onready var btn_visual: Button   = $SidePanel/VBox/TopHBox/ButtonsColumn/VisualBtn
@@ -56,10 +51,6 @@ func _ready() -> void:
 	object_list_panel.file_dropped.connect(_on_file_dropped)
 	object_list_panel.z_indices_changed.connect(_sort_canvas_z_order)
 	title_bar.gui_input.connect(_on_title_bar_input)
-	goal_spin.value_changed.connect(_on_goal_changed)
-	cash_spin.value_changed.connect(_on_cash_changed)
-	run_spin.value_changed.connect(_on_run_changed)
-	_refresh_stat_fields()
 	transform_panel.connect("transform_changed", _on_transform_live)
 	_set_edit_ui_visible(false)
 	_load_layout()
@@ -70,28 +61,6 @@ func _set_edit_ui_visible(v: bool) -> void:
 	side_panel.visible = v
 	if not v:
 		_dragging_panel = false   # never resume a drag after the panel hides
-	if v:
-		_refresh_stat_fields()    # sync spinboxes in case GameManager mutated externally
-
-# Sync the four stat rows from GameManager. SpinBox.set_value_no_signal avoids
-# re-firing value_changed and feedback-looping back into GameManager when the
-# refresh runs.
-func _refresh_stat_fields() -> void:
-	if goal_spin == null:
-		return
-	goal_spin.set_value_no_signal(float(GameManager.current_goal))
-	cash_spin.set_value_no_signal(GameManager.cash)
-	run_spin.set_value_no_signal(float(GameManager.run))
-	time_label.text = "Time: " + GameManager.get_time_string()
-
-func _on_goal_changed(value: float) -> void:
-	GameManager.current_goal = int(value)
-
-func _on_cash_changed(value: float) -> void:
-	GameManager.cash = value
-
-func _on_run_changed(value: float) -> void:
-	GameManager.run = int(value)
 
 func _on_title_bar_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:

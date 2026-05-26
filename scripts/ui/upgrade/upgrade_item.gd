@@ -42,6 +42,15 @@ func _on_stable_views_changed(_v: int) -> void:
 	_refresh_state()
 
 func _on_pressed() -> void:
+	# DIAGNOSTIC — remove after click-doesn't-buy bug is identified.
+	print("[ToolsList] pressed id=%s disabled=%s price=%d stable_views=%d" % [
+		upgrade_id, str(disabled),
+		UpgradeManager.get_current_price(upgrade_id),
+		GameManager.stable_views,
+	])
 	if UpgradeManager.try_purchase(upgrade_id):
+		print("[ToolsList]   purchase OK")
 		_refresh_state()
 		pressed_id.emit(upgrade_id)
+	else:
+		print("[ToolsList]   purchase FAILED")

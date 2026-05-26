@@ -22,13 +22,15 @@ const K_SUB: float = 0.04
 # Click contribution decay. exp(-CLICK_DECAY_RATE * t) → 0.01 after ~900s
 # (a 15-minute "half-life-ish" so click bursts fade gracefully into stable).
 const CLICK_DECAY_RATE: float = 0.00512
-# Ornstein-Uhlenbeck noise on the displayed view count. INERTIA close to 1
-# = strong mean reversion (smooth wandering); STEP is the per-tick gaussian
-# standard deviation; CLAMP bounds the percentage fluctuation. Tuned for a
-# visible "live counter" jitter — bump STEP up or INERTIA down for more chaos.
+# Noise resamples once per second (see VIEWS_DISPLAY_INTERVAL) so the displayed
+# views counter changes at a Twitch-like cadence rather than jittering every
+# frame. INERTIA = how much of the previous second's noise carries over;
+# STEP = gaussian std-dev applied each second; CLAMP bounds percentage drift.
 const NOISE_INERTIA: float = 0.7
-const NOISE_STEP: float = 0.3
+const NOISE_STEP: float = 0.05
 const NOISE_CLAMP: float = 0.5
+# How often the displayed view counter resamples noise and emits views_changed.
+const VIEWS_DISPLAY_INTERVAL: float = 1.0
 # Donation amount distribution: bounded Pareto on [L, H].
 const DONATION_L: float = 1.0
 const DONATION_H: float = 1_000_000.0
@@ -61,6 +63,9 @@ var _last_displayed_views_int: int = 0
 var _last_stable_views_int: int = 0
 var _last_subs_int: int = 0
 var _last_cash_emitted: float = 0.0
+# Counts up by delta each frame; when it crosses VIEWS_DISPLAY_INTERVAL we
+# resample noise and emit a fresh views_changed.
+var _views_tick_time: float = 0.0
 
 # ---------------------------------------------------------------------------
 # Public state
@@ -133,15 +138,25 @@ func _process(delta: float) -> void:
 	# 1000 views = +3/sec, at 1M = +6/sec. Sub-linear so it never runs away.
 	_passive_views += log(maxf(stable, 1.0)) / log(10.0) * delta
 
-	# 4. Noise — Ornstein-Uhlenbeck process drifting around 0, clamped.
-	_noise = _noise * pow(NOISE_INERTIA, delta) + randfn(0.0, NOISE_STEP) * delta
-	_noise = clampf(_noise, -NOISE_CLAMP, NOISE_CLAMP)
-
-	# 5. Donation Poisson tick.
+	# 4. Donation Poisson tick.
 	_tick_donations(delta)
 
-	# 6. Emit signals only when integer or cash values actually changed.
-	_emit_if_changed()
+	# 5. Noise + views_changed are throttled to VIEWS_DISPLAY_INTERVAL so the
+	# on-screen view counter ticks at a natural Twitch-like cadence instead of
+	# refreshing every frame.
+	_views_tick_time += delta
+	if _views_tick_time >= VIEWS_DISPLAY_INTERVAL:
+		_views_tick_time -= VIEWS_DISPLAY_INTERVAL
+		_noise = _noise * NOISE_INERTIA + randfn(0.0, NOISE_STEP)
+		_noise = clampf(_noise, -NOISE_CLAMP, NOISE_CLAMP)
+		var dv := displayed_views
+		if dv != _last_displayed_views_int:
+			_last_displayed_views_int = dv
+			views_changed.emit(dv)
+
+	# 6. Non-throttled emits — stable views, subs, and cash never "fluctuate";
+	# they only change in one direction, so emit immediately on int/value change.
+	_emit_steady_signals()
 
 # ---------------------------------------------------------------------------
 # Bulk grants — kept for comment_panel.gd consumers
@@ -259,11 +274,9 @@ func _tick_donations(delta: float) -> void:
 # Signal emission guard
 # ---------------------------------------------------------------------------
 
-func _emit_if_changed() -> void:
-	var dv := displayed_views
-	if dv != _last_displayed_views_int:
-		_last_displayed_views_int = dv
-		views_changed.emit(dv)
+func _emit_steady_signals() -> void:
+	# Emits everything EXCEPT views_changed, which is throttled in _process.
+	# Used after bulk grants and on every per-frame tick.
 	var sv := stable_views
 	if sv != _last_stable_views_int:
 		_last_stable_views_int = sv
@@ -275,6 +288,11 @@ func _emit_if_changed() -> void:
 	if absf(cash - _last_cash_emitted) > 0.0001:
 		_last_cash_emitted = cash
 		cash_changed.emit(cash)
+
+# Thin alias so add_bonus_subs/remove_subs callers keep working. They don't
+# need to bypass the views throttle — sub changes don't affect noise.
+func _emit_if_changed() -> void:
+	_emit_steady_signals()
 
 # ---------------------------------------------------------------------------
 # Inspection helpers — for future UI / debug overlays

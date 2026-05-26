@@ -19,9 +19,6 @@ signal stable_views_changed(v: int)
 
 # Sub growth coefficient. Sub gain per second = K_SUB * log_5(max(stable, 5)).
 const K_SUB: float = 0.04
-# Click contribution decay. exp(-CLICK_DECAY_RATE * t) → 0.01 after ~900s
-# (a 15-minute "half-life-ish" so click bursts fade gracefully into stable).
-const CLICK_DECAY_RATE: float = 0.00512
 # Noise resamples once per second (see VIEWS_DISPLAY_INTERVAL) so the displayed
 # views counter changes at a Twitch-like cadence rather than jittering every
 # frame. INERTIA = how much of the previous second's noise carries over;
@@ -46,10 +43,9 @@ const C_CONST: float = 0.0181
 # _subs starts at the base sub count so the log-rate sub growth and donation
 # Poisson rate both have a non-degenerate starting condition.
 var _subs: float = 10.0
-# Decaying contribution from recent clicks. Adds to stable view count.
-var _click_contribution: float = 0.0
-# Continuously growing passive view accumulator. Per-second growth rate is
-# log10(stable_views), so views naturally creep up even without clicks.
+# Non-decaying view accumulator. Grows from two sources, neither of which
+# subtracts: clicks (via on_view_clicked, +click_power each) and passive
+# growth (via _process, +log10(stable_views) per second).
 var _passive_views: float = 0.0
 # OU noise term applied as a multiplicative factor on displayed_views.
 var _noise: float = 0.0
@@ -76,7 +72,7 @@ var _views_tick_time: float = 0.0
 # eventually trigger cash_changed via the next _emit_if_changed.
 var cash: float = 0.0
 
-# Per-click cash yield in dollars. Default $1 per click; raised by upgrades.
+# Per-click view yield. Default = 1 view per click; raised by upgrades.
 var click_power: float = 1.0
 
 # Placeholder multiplier referenced by the {parasocial} stat template token.
@@ -101,47 +97,41 @@ var views: int:
 	get: return int(displayed_views)
 var subs: int:
 	get: return int(_subs)
-# Non-noisy view total — _subs + decaying click contribution + passive accumulator.
+# Non-noisy view total — _subs + non-decaying view accumulator.
 var stable_views: int:
-	get: return int(_subs + _click_contribution + _passive_views)
+	get: return int(_subs + _passive_views)
 # Noisy display value driven by the OU noise term.
 var displayed_views: int:
-	get: return int((_subs + _click_contribution + _passive_views) * (1.0 + _noise))
+	get: return int((_subs + _passive_views) * (1.0 + _noise))
 
 # ---------------------------------------------------------------------------
 # Click handler (entry point name locked)
 # ---------------------------------------------------------------------------
 
-# Player clicked the on-screen view image. Pays click_power dollars into cash.
-# cash_changed fires from the next _emit_steady_signals tick (same frame).
+# Player clicked the on-screen view image. Adds click_power views (non-decaying)
+# to the view accumulator. Signal emission via the next _process tick.
 func on_view_clicked() -> void:
-	cash += click_power
+	_passive_views += click_power
 
 # ---------------------------------------------------------------------------
 # Per-tick processing
 # ---------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
-	# 1. Click decay — exponential toward 0.
-	if _click_contribution > 0.0:
-		_click_contribution *= exp(-CLICK_DECAY_RATE * delta)
-		if _click_contribution < 0.0001:
-			_click_contribution = 0.0
-
-	# 2. Sub growth — log-scaled in the stable (click-inclusive) view count.
-	var stable: float = _subs + _click_contribution + _passive_views
+	# 1. Sub growth — log-scaled in the stable view count.
+	var stable: float = _subs + _passive_views
 	var sub_rate: float = K_SUB * (log(maxf(stable, 5.0)) / log(5.0))
 	_subs += sub_rate * delta
 
-	# 3. Passive view growth — log10 of the current total view count per sec.
+	# 2. Passive view growth — log10 of the current total view count per sec.
 	# Floor of 1.0 keeps log10 non-negative; at 10 views = +1 view/sec, at
 	# 1000 views = +3/sec, at 1M = +6/sec. Sub-linear so it never runs away.
 	_passive_views += log(maxf(stable, 1.0)) / log(10.0) * delta
 
-	# 4. Donation Poisson tick.
+	# 3. Donation Poisson tick.
 	_tick_donations(delta)
 
-	# 5. Noise + views_changed are throttled to VIEWS_DISPLAY_INTERVAL so the
+	# 4. Noise + views_changed are throttled to VIEWS_DISPLAY_INTERVAL so the
 	# on-screen view counter ticks at a natural Twitch-like cadence instead of
 	# refreshing every frame.
 	_views_tick_time += delta
@@ -154,7 +144,7 @@ func _process(delta: float) -> void:
 			_last_displayed_views_int = dv
 			views_changed.emit(dv)
 
-	# 6. Non-throttled emits — stable views, subs, and cash never "fluctuate";
+	# 5. Non-throttled emits — stable views, subs, and cash never "fluctuate";
 	# they only change in one direction, so emit immediately on int/value change.
 	_emit_steady_signals()
 
@@ -299,10 +289,10 @@ func _emit_if_changed() -> void:
 # ---------------------------------------------------------------------------
 
 func get_vps_estimate() -> float:
-	return K_SUB * (log(maxf(_subs + _click_contribution + _passive_views, 5.0)) / log(5.0))
+	return K_SUB * (log(maxf(_subs + _passive_views, 5.0)) / log(5.0))
 
 func get_view_growth_estimate() -> float:
-	return log(maxf(_subs + _click_contribution + _passive_views, 1.0)) / log(10.0)
+	return log(maxf(_subs + _passive_views, 1.0)) / log(10.0)
 
 func get_donation_rate_estimate() -> float:
 	return C_CONST * pow(maxf(_subs, 1.0), K_EXP)

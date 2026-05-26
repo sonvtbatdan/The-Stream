@@ -47,7 +47,11 @@ func _refresh_count() -> void:
 
 func _on_stable_views_changed(_v: int) -> void:
 	var cost: int = int(UpgradeManager.UPGRADES[upgrade_id]["cost"])
-	disabled = GameManager.stable_views < cost
+	var can_afford: bool = GameManager.stable_views >= cost
+	disabled = not can_afford
+	# modulate cascades to all children, so the labels dim alongside the
+	# Button's own rendering — gives the whole row a uniform grayed-out look.
+	modulate = Color.WHITE if can_afford else Color(0.5, 0.5, 0.5, 1.0)
 
 func _on_pressed() -> void:
 	if UpgradeManager.try_purchase(upgrade_id):

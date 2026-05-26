@@ -76,7 +76,7 @@ var _views_tick_time: float = 0.0
 # eventually trigger cash_changed via the next _emit_if_changed.
 var cash: float = 0.0
 
-# Per-click contribution added to _click_contribution. Future upgrades raise it.
+# Per-click cash yield in dollars. Default $1 per click; raised by upgrades.
 var click_power: float = 1.0
 
 # Placeholder multiplier referenced by the {parasocial} stat template token.
@@ -112,10 +112,10 @@ var displayed_views: int:
 # Click handler (entry point name locked)
 # ---------------------------------------------------------------------------
 
-# Player clicked the on-screen view image. Adds click_power to the decaying
-# click contribution; signal emission happens in _process on the next tick.
+# Player clicked the on-screen view image. Pays click_power dollars into cash.
+# cash_changed fires from the next _emit_steady_signals tick (same frame).
 func on_view_clicked() -> void:
-	_click_contribution += click_power
+	cash += click_power
 
 # ---------------------------------------------------------------------------
 # Per-tick processing

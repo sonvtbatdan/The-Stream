@@ -4,14 +4,68 @@ signal upgrade_purchased(upgrade_id: String)
 
 var owned: Dictionary = {}
 
+# Tools the player can buy with views. Each entry has:
+#   name — display name shown in the ToolsColumn
+#   cost — base view price (n-th unit costs ceil(cost * PRICE_SCALE^(n-1)))
+#   desc — short flavor line shown beneath the name
+#   vps  — views per second added per owned unit (omit for non-VPS tools)
+#   auto_click_rate — auto-clicks per second per owned unit (each tick adds
+#                     click_power views). Omit unless this is an auto-clicker.
 const UPGRADES := {
-	"fanreact":   { "name": "Fan React",      "cost": 5.0,     "non_bot_vps": 1.0,                           "desc": "Permanently increases your view count by 1 view per second." },
-	"fanview":    { "name": "Fan View",       "cost": 10.0,    "non_bot_vps": 5.0,                           "desc": "Permanently increases your view count by 5 views per second." },
-	"botreact":   { "name": "Bot React",      "cost": 100.0,   "bot_vps": 50.0,                              "desc": "Permanently increases your view count by 50 views per second." },
-	"botview":    { "name": "Bot View",       "cost": 500.0,   "bot_vps": 200.0,                             "desc": "Permanently increases your view count by 200 views per second." },
-	"algorimth":  { "name": "Algorithm",      "cost": 5000.0,  "view_mult_bonus": 0.02,                      "desc": "Permanently increases your total view generation by 2%." },
-	"ad":         { "name": "Advertisement",  "cost": 1000.0,  "boost_pct": 0.10, "boost_duration": 30.0,   "desc": "Temporarily boosts your total view generation by 10% for 30 seconds." },
-	"botupgrade": { "name": "Bot Upgrade",    "cost": 10000.0, "bot_efficiency_bonus": 0.05,                 "desc": "Permanently increases the efficiency of Bot React and Bot View by 5%." },
+	"autoclicker": {
+		"name": "Auto-clicker",
+		"cost": 10.0,
+		"auto_click_rate": 1.0,
+		"desc": "Can't be clicking all the time."
+	},
+	"fanclub": {
+		"name": "Fanclub",
+		"cost": 200.0,
+		"vps": 5.0,
+		"desc": "The love of the fan is why I am doing this (not for money of course)."
+	},
+	"collaborators": {
+		"name": "Collaborators",
+		"cost": 4000.0,
+		"vps": 40.0,
+		"desc": "Tell your men that they work for me now."
+	},
+	"publishers": {
+		"name": "Publishers",
+		"cost": 80000.0,
+		"vps": 287.0,
+		"desc": "Can't get enough of your face."
+	},
+	"trojan": {
+		"name": "Trojan",
+		"cost": 1600000.0,
+		"vps": 2016.0,
+		"desc": "Run the stream in the background of all infected computers."
+	},
+	"satellite": {
+		"name": "Satellite",
+		"cost": 32000000.0,
+		"vps": 14117.0,
+		"desc": "Replace mainstream media with yourstream media."
+	},
+	"concentration_camp": {
+		"name": "Concentration camp",
+		"cost": 640000000.0,
+		"vps": 98824.0,
+		"desc": "There is nothing but the stream."
+	},
+	"animal_translator": {
+		"name": "Animal-Language-Translator-inator",
+		"cost": 12800000000.0,
+		"vps": 691775.0,
+		"desc": "Intelligent or not, they are watching the stream."
+	},
+	"the_vats": {
+		"name": "The vats",
+		"cost": 256000000000.0,
+		"vps": 4842432.0,
+		"desc": "Content-consumer creator."
+	},
 }
 
 const PRICE_SCALE := 1.15   # each new unit costs 15% more than the previous
@@ -37,16 +91,10 @@ func get_current_price(upgrade_id: String) -> int:
 	return int(ceil(base * pow(PRICE_SCALE, n)))
 
 func _apply_upgrade(data: Dictionary) -> void:
-	if data.has("non_bot_vps"):
-		GameManager.add_non_bot_vps(data["non_bot_vps"])
-	if data.has("bot_vps"):
-		GameManager.add_bot_vps(data["bot_vps"])
-	if data.has("view_mult_bonus"):
-		GameManager.apply_view_multiplier(data["view_mult_bonus"])
-	if data.has("boost_pct"):
-		GameManager.apply_boost(data["boost_pct"], data["boost_duration"])
-	if data.has("bot_efficiency_bonus"):
-		GameManager.add_bot_efficiency(data["bot_efficiency_bonus"])
+	if data.has("vps"):
+		GameManager.vps += float(data["vps"])
+	if data.has("auto_click_rate"):
+		GameManager.auto_click_rate += float(data["auto_click_rate"])
 
 func get_owned_count(upgrade_id: String) -> int:
 	return owned.get(upgrade_id, 0)

@@ -58,6 +58,15 @@ var cash: float = 0.0
 # Per-click view yield. Default = 1 view per click; raised by upgrades.
 var click_power: float = 1.0
 
+# Total views per second contributed by all owned VPS tools (Fanclub,
+# Collaborators, Publishers, ...). UpgradeManager._apply_upgrade adds to this.
+var vps: float = 0.0
+
+# Total auto-clicks per second contributed by all owned auto-clickers. Each
+# auto-click adds click_power views, so the effective view rate scales with
+# click_power upgrades.
+var auto_click_rate: float = 0.0
+
 # Placeholder multiplier referenced by the {parasocial} stat template token.
 # Currently inert in the math; will be wired into sub growth by a future task.
 var parasocial: float = 1.0
@@ -107,10 +116,17 @@ func _process(delta: float) -> void:
 	var sub_rate: float = K_SUB * (log(maxf(stable, 5.0)) / log(5.0))
 	_subs += sub_rate * delta
 
-	# 2. Donation Poisson tick.
+	# 2. Tool view production. VPS tools tick directly; auto-clickers tick
+	# click_power views per auto-click-per-second so the autoclicker scales
+	# with future click_power upgrades.
+	var view_gain: float = (vps + auto_click_rate * click_power) * delta
+	if view_gain > 0.0:
+		_passive_views += view_gain
+
+	# 3. Donation Poisson tick.
 	_tick_donations(delta)
 
-	# 3. Emit any int crossings from sub growth, donation cash, etc.
+	# 4. Emit any int crossings from sub growth, tool views, donation cash.
 	_emit_steady_signals()
 
 # ---------------------------------------------------------------------------

@@ -2,18 +2,6 @@ extends Button
 
 signal pressed_id(upgrade_id: String)
 
-# Placeholder one-liners per tool id — short enough to fit a single row at the
-# default ToolsColumn width. Real copy from the user replaces these later.
-const PLACEHOLDER_DESCS := {
-	"fanreact":   "Friends boost engagement.",
-	"fanview":    "Friends watch idly.",
-	"botreact":   "Bots spam reactions.",
-	"botview":    "Bots pad your viewers.",
-	"algorimth":  "Algorithm boosts reach.",
-	"ad":         "Buy a brief view spike.",
-	"botupgrade": "Smarter bots, more views.",
-}
-
 @onready var name_label: Label = %NameLabel
 @onready var price_label: Label = %PriceLabel
 @onready var desc_label: Label = %DescLabel
@@ -25,7 +13,7 @@ func setup(id: String) -> void:
 	upgrade_id = id
 	var data: Dictionary = UpgradeManager.UPGRADES[id]
 	name_label.text = data["name"]
-	desc_label.text = PLACEHOLDER_DESCS.get(id, "Placeholder description.")
+	desc_label.text = String(data.get("desc", ""))
 	# Affordability re-check on the non-noisy stable view total so the row
 	# doesn't flicker enabled/disabled with the displayed counter's jitter.
 	GameManager.stable_views_changed.connect(_on_stable_views_changed)

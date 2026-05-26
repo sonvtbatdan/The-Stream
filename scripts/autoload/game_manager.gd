@@ -24,9 +24,10 @@ const K_SUB: float = 0.04
 const CLICK_DECAY_RATE: float = 0.00512
 # Ornstein-Uhlenbeck noise on the displayed view count. INERTIA close to 1
 # = strong mean reversion (smooth wandering); STEP is the per-tick gaussian
-# standard deviation; CLAMP bounds the percentage fluctuation.
-const NOISE_INERTIA: float = 0.99
-const NOISE_STEP: float = 0.02
+# standard deviation; CLAMP bounds the percentage fluctuation. Tuned for a
+# visible "live counter" jitter — bump STEP up or INERTIA down for more chaos.
+const NOISE_INERTIA: float = 0.7
+const NOISE_STEP: float = 1.5
 const NOISE_CLAMP: float = 0.5
 # Donation amount distribution: bounded Pareto on [L, H].
 const DONATION_L: float = 1.0
@@ -40,9 +41,14 @@ const C_CONST: float = 0.0181
 # ---------------------------------------------------------------------------
 
 # Float accumulators so sub-integer changes don't get truncated each tick.
-var _subs: float = 0.0
+# _subs starts at the base sub count so the log-rate sub growth and donation
+# Poisson rate both have a non-degenerate starting condition.
+var _subs: float = 10.0
 # Decaying contribution from recent clicks. Adds to stable view count.
 var _click_contribution: float = 0.0
+# Continuously growing passive view accumulator. Per-second growth rate is
+# log10(stable_views), so views naturally creep up even without clicks.
+var _passive_views: float = 0.0
 # OU noise term applied as a multiplicative factor on displayed_views.
 var _noise: float = 0.0
 # Cached bounded-Pareto shape parameter for the donation distribution.
@@ -90,12 +96,12 @@ var views: int:
 	get: return int(displayed_views)
 var subs: int:
 	get: return int(_subs)
-# Non-noisy view total — _subs + decaying click contribution.
+# Non-noisy view total — _subs + decaying click contribution + passive accumulator.
 var stable_views: int:
-	get: return int(_subs + _click_contribution)
+	get: return int(_subs + _click_contribution + _passive_views)
 # Noisy display value driven by the OU noise term.
 var displayed_views: int:
-	get: return int((_subs + _click_contribution) * (1.0 + _noise))
+	get: return int((_subs + _click_contribution + _passive_views) * (1.0 + _noise))
 
 # ---------------------------------------------------------------------------
 # Click handler (entry point name locked)
@@ -118,18 +124,23 @@ func _process(delta: float) -> void:
 			_click_contribution = 0.0
 
 	# 2. Sub growth — log-scaled in the stable (click-inclusive) view count.
-	var stable: float = _subs + _click_contribution
+	var stable: float = _subs + _click_contribution + _passive_views
 	var sub_rate: float = K_SUB * (log(maxf(stable, 5.0)) / log(5.0))
 	_subs += sub_rate * delta
 
-	# 3. Noise — Ornstein-Uhlenbeck process drifting around 0, clamped.
+	# 3. Passive view growth — log10 of the current total view count per sec.
+	# Floor of 1.0 keeps log10 non-negative; at 10 views = +1 view/sec, at
+	# 1000 views = +3/sec, at 1M = +6/sec. Sub-linear so it never runs away.
+	_passive_views += log(maxf(stable, 1.0)) / log(10.0) * delta
+
+	# 4. Noise — Ornstein-Uhlenbeck process drifting around 0, clamped.
 	_noise = _noise * pow(NOISE_INERTIA, delta) + randfn(0.0, NOISE_STEP) * delta
 	_noise = clampf(_noise, -NOISE_CLAMP, NOISE_CLAMP)
 
-	# 4. Donation Poisson tick.
+	# 5. Donation Poisson tick.
 	_tick_donations(delta)
 
-	# 5. Emit signals only when integer or cash values actually changed.
+	# 6. Emit signals only when integer or cash values actually changed.
 	_emit_if_changed()
 
 # ---------------------------------------------------------------------------
@@ -270,7 +281,10 @@ func _emit_if_changed() -> void:
 # ---------------------------------------------------------------------------
 
 func get_vps_estimate() -> float:
-	return K_SUB * (log(maxf(_subs + _click_contribution, 5.0)) / log(5.0))
+	return K_SUB * (log(maxf(_subs + _click_contribution + _passive_views, 5.0)) / log(5.0))
+
+func get_view_growth_estimate() -> float:
+	return log(maxf(_subs + _click_contribution + _passive_views, 1.0)) / log(10.0)
 
 func get_donation_rate_estimate() -> float:
 	return C_CONST * pow(maxf(_subs, 1.0), K_EXP)

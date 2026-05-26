@@ -9,12 +9,16 @@ func _ready() -> void:
 	GameManager.stat_template_changed.connect(_on_template_changed)
 	GameManager.views_changed.connect(_on_value_changed)
 	GameManager.subs_changed.connect(_on_value_changed)
+	GameManager.cash_changed.connect(_on_cash_changed)
 	_refresh()
 
 func _on_template_changed(_template: String) -> void:
 	_refresh()
 
 func _on_value_changed(_value: int) -> void:
+	_refresh()
+
+func _on_cash_changed(_cash: float) -> void:
 	_refresh()
 
 func _refresh() -> void:

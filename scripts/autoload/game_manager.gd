@@ -85,7 +85,7 @@ var parasocial: float = 1.0
 
 # Player-editable stat display template. The setter emits stat_template_changed
 # so consumers (stat_panel.gd) can re-render. Locked per the rewrite spec.
-var stat_template: String = "Views: {views}\nSubs: {subs}\nClick: x{click_power}":
+var stat_template: String = "Views: {views}\nSubs: {subs}\nCash: ${cash}\nClick: x{click_power}":
 	set(value):
 		if stat_template == value:
 			return

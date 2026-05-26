@@ -27,7 +27,7 @@ const CLICK_DECAY_RATE: float = 0.00512
 # standard deviation; CLAMP bounds the percentage fluctuation. Tuned for a
 # visible "live counter" jitter — bump STEP up or INERTIA down for more chaos.
 const NOISE_INERTIA: float = 0.7
-const NOISE_STEP: float = 1.5
+const NOISE_STEP: float = 0.3
 const NOISE_CLAMP: float = 0.5
 # Donation amount distribution: bounded Pareto on [L, H].
 const DONATION_L: float = 1.0

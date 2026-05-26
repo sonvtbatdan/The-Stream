@@ -19,15 +19,6 @@ signal stable_views_changed(v: int)
 
 # Sub growth coefficient. Sub gain per second = K_SUB * log_5(max(stable, 5)).
 const K_SUB: float = 0.04
-# Noise resamples once per second (see VIEWS_DISPLAY_INTERVAL) so the displayed
-# views counter changes at a Twitch-like cadence rather than jittering every
-# frame. INERTIA = how much of the previous second's noise carries over;
-# STEP = gaussian std-dev applied each second; CLAMP bounds percentage drift.
-const NOISE_INERTIA: float = 0.7
-const NOISE_STEP: float = 0.05
-const NOISE_CLAMP: float = 0.5
-# How often the displayed view counter resamples noise and emits views_changed.
-const VIEWS_DISPLAY_INTERVAL: float = 1.0
 # Donation amount distribution: bounded Pareto on [L, H].
 const DONATION_L: float = 1.0
 const DONATION_H: float = 1_000_000.0
@@ -43,12 +34,9 @@ const C_CONST: float = 0.0181
 # _subs starts at the base sub count so the log-rate sub growth and donation
 # Poisson rate both have a non-degenerate starting condition.
 var _subs: float = 10.0
-# Non-decaying view accumulator. Grows from two sources, neither of which
-# subtracts: clicks (via on_view_clicked, +click_power each) and passive
-# growth (via _process, +log10(stable_views) per second).
+# View accumulator — grows only from clicks (via on_view_clicked, +click_power
+# each) and shrinks only from spend_views (tool purchases). No passive growth.
 var _passive_views: float = 0.0
-# OU noise term applied as a multiplicative factor on displayed_views.
-var _noise: float = 0.0
 # Cached bounded-Pareto shape parameter for the donation distribution.
 # Recomputed lazily when _subs moves >10% from when it was last solved.
 var _donation_alpha: float = 5.0
@@ -59,9 +47,6 @@ var _last_displayed_views_int: int = 0
 var _last_stable_views_int: int = 0
 var _last_subs_int: int = 0
 var _last_cash_emitted: float = 0.0
-# Counts up by delta each frame; when it crosses VIEWS_DISPLAY_INTERVAL we
-# resample noise and emit a fresh views_changed.
-var _views_tick_time: float = 0.0
 
 # ---------------------------------------------------------------------------
 # Public state
@@ -92,26 +77,27 @@ var stat_template: String = "Views: {views}\nSubs: {subs}\nCash: ${cash}\nClick:
 # Public read-only getters
 # ---------------------------------------------------------------------------
 
-# Compatibility view: the same noisy displayed number old consumers already saw.
 var views: int:
-	get: return int(displayed_views)
+	get: return int(_subs + _passive_views)
 var subs: int:
 	get: return int(_subs)
-# Non-noisy view total — _subs + non-decaying view accumulator.
+# stable_views and displayed_views are now identical — kept as separate
+# getters so existing consumers (upgrade_item.gd, stat_panel.gd) work
+# unchanged and the API leaves room for re-adding noise later if desired.
 var stable_views: int:
 	get: return int(_subs + _passive_views)
-# Noisy display value driven by the OU noise term.
 var displayed_views: int:
-	get: return int((_subs + _passive_views) * (1.0 + _noise))
+	get: return int(_subs + _passive_views)
 
 # ---------------------------------------------------------------------------
 # Click handler (entry point name locked)
 # ---------------------------------------------------------------------------
 
-# Player clicked the on-screen view image. Adds click_power views (non-decaying)
-# to the view accumulator. Signal emission via the next _process tick.
+# Player clicked the on-screen view image. Adds click_power views to the
+# accumulator and emits views_changed immediately so the counter updates live.
 func on_view_clicked() -> void:
 	_passive_views += click_power
+	_emit_steady_signals()
 
 # ---------------------------------------------------------------------------
 # Per-tick processing
@@ -123,29 +109,10 @@ func _process(delta: float) -> void:
 	var sub_rate: float = K_SUB * (log(maxf(stable, 5.0)) / log(5.0))
 	_subs += sub_rate * delta
 
-	# 2. Passive view growth — log10 of the current total view count per sec.
-	# Floor of 1.0 keeps log10 non-negative; at 10 views = +1 view/sec, at
-	# 1000 views = +3/sec, at 1M = +6/sec. Sub-linear so it never runs away.
-	_passive_views += log(maxf(stable, 1.0)) / log(10.0) * delta
-
-	# 3. Donation Poisson tick.
+	# 2. Donation Poisson tick.
 	_tick_donations(delta)
 
-	# 4. Noise + views_changed are throttled to VIEWS_DISPLAY_INTERVAL so the
-	# on-screen view counter ticks at a natural Twitch-like cadence instead of
-	# refreshing every frame.
-	_views_tick_time += delta
-	if _views_tick_time >= VIEWS_DISPLAY_INTERVAL:
-		_views_tick_time -= VIEWS_DISPLAY_INTERVAL
-		_noise = _noise * NOISE_INERTIA + randfn(0.0, NOISE_STEP)
-		_noise = clampf(_noise, -NOISE_CLAMP, NOISE_CLAMP)
-		var dv := displayed_views
-		if dv != _last_displayed_views_int:
-			_last_displayed_views_int = dv
-			views_changed.emit(dv)
-
-	# 5. Non-throttled emits — stable views, subs, and cash never "fluctuate";
-	# they only change in one direction, so emit immediately on int/value change.
+	# 3. Emit any int crossings from sub growth, donation cash, etc.
 	_emit_steady_signals()
 
 # ---------------------------------------------------------------------------
@@ -279,12 +246,14 @@ func _tick_donations(delta: float) -> void:
 # ---------------------------------------------------------------------------
 
 func _emit_steady_signals() -> void:
-	# Emits everything EXCEPT views_changed, which is throttled in _process.
-	# Used after bulk grants and on every per-frame tick.
+	# Without noise, displayed_views == stable_views, so the two view signals
+	# fire together on the same int crossing.
 	var sv := stable_views
 	if sv != _last_stable_views_int:
 		_last_stable_views_int = sv
+		_last_displayed_views_int = sv
 		stable_views_changed.emit(sv)
+		views_changed.emit(sv)
 	var s := subs
 	if s != _last_subs_int:
 		_last_subs_int = s
@@ -304,9 +273,6 @@ func _emit_if_changed() -> void:
 
 func get_vps_estimate() -> float:
 	return K_SUB * (log(maxf(_subs + _passive_views, 5.0)) / log(5.0))
-
-func get_view_growth_estimate() -> float:
-	return log(maxf(_subs + _passive_views, 1.0)) / log(10.0)
 
 func get_donation_rate_estimate() -> float:
 	return C_CONST * pow(maxf(_subs, 1.0), K_EXP)

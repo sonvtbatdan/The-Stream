@@ -27,10 +27,12 @@ $mpvLog = Join-Path $toolsDir "mpv-ipc.log"
 try {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName       = $mpvExe
-    $psi.Arguments      = "--no-video --no-terminal --force-window=no --idle=yes `"--ytdl-path=$ytdlpExe`" --input-ipc-server=$pipeName `"--log-file=$mpvLog`""
+    $psi.Arguments      = "--no-video --no-terminal --force-window=no --idle=yes --input-ipc-server=$pipeName `"--log-file=$mpvLog`""
     $psi.WindowStyle    = [System.Diagnostics.ProcessWindowStyle]::Hidden
     $psi.CreateNoWindow = $true
     $psi.UseShellExecute = $false
+    # Add tools dir to PATH so mpv can find yt-dlp.exe without --ytdl-path flag
+    $psi.EnvironmentVariables["PATH"] = "$toolsDir;" + $psi.EnvironmentVariables["PATH"]
     $mpv = [System.Diagnostics.Process]::Start($psi)
     Log "mpv launched  PID=$($mpv.Id)"
     Log "mpv args: $($psi.Arguments)"

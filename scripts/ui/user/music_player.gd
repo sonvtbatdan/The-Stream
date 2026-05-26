@@ -1,11 +1,10 @@
 # Music player widget.
-# Paste a YouTube URL → Play opens the video (audio only) in a hidden browser tab
-# controlled via WebSocket. Volume slider sends volume to the browser.
+# Paste a YouTube URL → press Enter or ▶ to play (title fetched simultaneously).
 class_name UserMusicPlayer
 extends Panel
 
-const PANEL_W := 460.0
-const PANEL_H := 195.0
+const PANEL_W  := 460.0
+const PANEL_H  := 195.0
 const YT_OEMBED := "https://www.youtube.com/oembed?url=%s&format=json"
 
 var _server: UserMusicServer
@@ -16,7 +15,7 @@ var _loading  := false
 var _load_t   := 0.0
 
 var _url_input:    LineEdit
-var _title_lbl:    Label
+var _title_lbl:    _MarqueeLabel
 var _play_btn:     Button
 var _mute_btn:     Button
 var _vol_slider:   HSlider
@@ -78,17 +77,16 @@ func _build_ui() -> void:
 	_url_input.text_submitted.connect(_on_url_submitted)
 	root.add_child(_url_input)
 
-	# ── Song name ─────────────────────────────────────────────────
-	_title_lbl = Label.new()
-	_title_lbl.text = "—"
-	_title_lbl.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
-	_title_lbl.add_theme_font_size_override("font_size", 12)
-	_title_lbl.clip_text = true
+	# ── Scrolling song name ───────────────────────────────────────
+	_title_lbl = _MarqueeLabel.new()
+	_title_lbl.set_text("—")
+	_title_lbl.set_style(Color(0.8, 0.9, 1.0), 12)
+	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(_title_lbl)
 
 	# ── Controls row ─────────────────────────────────────────────
 	var ctrl_row := HBoxContainer.new()
-	ctrl_row.add_theme_constant_override("separation", 8)
+	ctrl_row.add_theme_constant_override("separation", 6)
 	root.add_child(ctrl_row)
 
 	_play_btn = Button.new()
@@ -97,7 +95,6 @@ func _build_ui() -> void:
 	_play_btn.pressed.connect(_on_play_pressed)
 	ctrl_row.add_child(_play_btn)
 
-	# Volume triangle + slider
 	var vol_container := _build_vol_container()
 	vol_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ctrl_row.add_child(vol_container)
@@ -108,6 +105,13 @@ func _build_ui() -> void:
 	_mute_btn.toggle_mode = true
 	_mute_btn.toggled.connect(_on_mute_toggled)
 	ctrl_row.add_child(_mute_btn)
+
+	var test_btn := Button.new()
+	test_btn.text = "♪"
+	test_btn.custom_minimum_size = Vector2(28, 36)
+	test_btn.tooltip_text = "Sound test (Godot audio)"
+	test_btn.pressed.connect(_on_sound_test_pressed)
+	ctrl_row.add_child(test_btn)
 
 	# ── Status ────────────────────────────────────────────────────
 	_status_lbl = LineEdit.new()
@@ -122,11 +126,9 @@ func _build_ui() -> void:
 	root.add_child(_status_lbl)
 
 func _build_vol_container() -> Control:
-	# Draws a right-pointing triangle behind an HSlider to indicate volume ramp.
 	var container := Control.new()
 	container.custom_minimum_size = Vector2(0, 36)
 
-	# Background triangle drawn via script
 	var triangle: Control = _TriangleDraw.new()
 	triangle.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	triangle.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -150,16 +152,22 @@ func _on_url_submitted(url: String) -> void:
 	if url.is_empty():
 		return
 	_url_input.text = url
-	_title_lbl.text = "Fetching…"
+	_fetch_title(url)
+	if not _playing:
+		_on_play_pressed()
+
+func _fetch_title(url: String) -> void:
+	_title_lbl.set_text("Fetching…")
+	_http_title.cancel_request()
 	_http_title.request(YT_OEMBED % url.uri_encode())
 
 func _on_title_fetched(_res: int, code: int, _hdrs: PackedStringArray, body: PackedByteArray) -> void:
 	if code == 200:
 		var j: Variant = JSON.parse_string(body.get_string_from_utf8())
 		if j is Dictionary:
-			_title_lbl.text = j.get("title", "Unknown")
+			_title_lbl.set_text(j.get("title", "Unknown"))
 	else:
-		_title_lbl.text = "Unknown title"
+		_title_lbl.set_text("Unknown title")
 
 func _on_play_pressed() -> void:
 	if not _playing:
@@ -171,11 +179,12 @@ func _on_play_pressed() -> void:
 		if vid_id.is_empty():
 			_status_lbl.text = "Invalid YouTube URL."
 			return
+		_fetch_title(url)
 		_playing = true
 		_loading = true
 		_load_t  = 0.0
 		_play_btn.text = "⏸"
-		_server.open_video(vid_id)  # may synchronously fire start_failed → resets _playing/_loading
+		_server.open_video(vid_id)
 	else:
 		_playing = false
 		_loading = false
@@ -208,10 +217,32 @@ func _on_start_failed(reason: String) -> void:
 	_play_btn.text = "▶"
 	_status_lbl.text = reason
 
+func _on_sound_test_pressed() -> void:
+	# Plays a 440 Hz beep through Godot's own audio to confirm the pipeline works.
+	var player := AudioStreamPlayer.new()
+	add_child(player)
+	var gen := AudioStreamGenerator.new()
+	gen.mix_rate      = 44100.0
+	gen.buffer_length = 0.5
+	player.stream = gen
+	player.play()
+	var pb := player.get_stream_playback() as AudioStreamGeneratorPlayback
+	if pb:
+		var n := int(gen.mix_rate * gen.buffer_length)
+		for i in n:
+			var t   := float(i) / gen.mix_rate
+			var env := 1.0 - t / gen.buffer_length
+			var s   := sin(TAU * 440.0 * t) * 0.4 * env
+			pb.push_frame(Vector2(s, s))
+	_status_lbl.text = "♪ beep — did you hear it?"
+	await get_tree().create_timer(0.8).timeout
+	player.queue_free()
+	if _status_lbl.text == "♪ beep — did you hear it?":
+		_status_lbl.text = ""
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 func _extract_video_id(url: String) -> String:
-	# Handles youtu.be/ID and youtube.com/watch?v=ID
 	if "youtu.be/" in url:
 		var parts := url.split("youtu.be/")
 		if parts.size() >= 2:
@@ -221,14 +252,66 @@ func _extract_video_id(url: String) -> String:
 		return after.split("&")[0].split("#")[0]
 	return ""
 
-# Inner class: draws the volume ramp triangle
+# ── Inner: scrolling label ────────────────────────────────────────────────────
+class _MarqueeLabel extends Control:
+	const SPEED := 50.0   # px / sec
+	const PAUSE := 2.0    # sec pause at each end
+
+	var _lbl:  Label
+	var _ox    := 0.0
+	var _dir   := -1.0
+	var _wait  := PAUSE
+
+	func _init() -> void:
+		_lbl = Label.new()
+		_lbl.position = Vector2.ZERO
+		_lbl.clip_text = false
+
+	func _ready() -> void:
+		clip_contents = true
+		add_child(_lbl)
+		custom_minimum_size.y = max(18.0, _lbl.get_minimum_size().y)
+
+	func set_text(t: String) -> void:
+		_lbl.text = t
+		_ox   = 0.0
+		_dir  = -1.0
+		_wait = PAUSE
+		if is_node_ready():
+			_lbl.position.x = 0.0
+
+	func set_style(color: Color, font_size: int) -> void:
+		_lbl.add_theme_color_override("font_color", color)
+		_lbl.add_theme_font_size_override("font_size", font_size)
+
+	func _process(delta: float) -> void:
+		var text_w := _lbl.get_minimum_size().x
+		if text_w <= size.x:
+			_lbl.position.x = 0.0
+			_ox = 0.0
+			return
+		if _wait > 0.0:
+			_wait -= delta
+			return
+		_ox += SPEED * _dir * delta
+		var max_off := -(text_w - size.x)
+		if _ox <= max_off:
+			_ox   = max_off
+			_dir  = 1.0
+			_wait = PAUSE
+		elif _ox >= 0.0:
+			_ox   = 0.0
+			_dir  = -1.0
+			_wait = PAUSE
+		_lbl.position.x = _ox
+
+# ── Inner: volume ramp triangle ───────────────────────────────────────────────
 class _TriangleDraw extends Control:
 	func _draw() -> void:
 		var w := size.x
 		var h := size.y
-		var pts := PackedVector2Array([
+		draw_colored_polygon(PackedVector2Array([
 			Vector2(0.0, h),
 			Vector2(w,   h * 0.25),
 			Vector2(w,   h),
-		])
-		draw_colored_polygon(pts, Color(0.3, 0.45, 0.7, 0.45))
+		]), Color(0.3, 0.45, 0.7, 0.45))

@@ -2,17 +2,16 @@ extends Button
 
 signal pressed_id(upgrade_id: String)
 
-# Placeholder descriptions per tool id. Replace with real text via the
-# UpgradeManager catalog later — the catalog's `desc` field is preferred when
-# present and non-empty.
+# Placeholder one-liners per tool id — short enough to fit a single row at the
+# default ToolsColumn width. Real copy from the user replaces these later.
 const PLACEHOLDER_DESCS := {
-	"fanreact":   "Friends auto-react to your stream every few seconds.",
-	"fanview":    "Friends idle in chat, watching passively.",
-	"botreact":   "Cheap bots spam reactions to inflate engagement.",
-	"botview":    "Idle view-bots pad your viewer count.",
-	"algorimth":  "The algorithm pushes your stream to more people.",
-	"ad":         "Pay for a short discoverability boost.",
-	"botupgrade": "Bot pipeline gets smarter — same bots, more views.",
+	"fanreact":   "Friends boost engagement.",
+	"fanview":    "Friends watch idly.",
+	"botreact":   "Bots spam reactions.",
+	"botview":    "Bots pad your viewers.",
+	"algorimth":  "Algorithm boosts reach.",
+	"ad":         "Buy a brief view spike.",
+	"botupgrade": "Smarter bots, more views.",
 }
 
 @onready var name_label: Label = %NameLabel
@@ -26,7 +25,7 @@ func setup(id: String) -> void:
 	upgrade_id = id
 	var data: Dictionary = UpgradeManager.UPGRADES[id]
 	name_label.text = data["name"]
-	desc_label.text = String(data.get("desc", "")) if data.get("desc", "") != "" else PLACEHOLDER_DESCS.get(id, "Placeholder description.")
+	desc_label.text = PLACEHOLDER_DESCS.get(id, "Placeholder description.")
 	_refresh_price()
 	_refresh_count()
 	# Affordability re-check on the non-noisy stable view total so the row

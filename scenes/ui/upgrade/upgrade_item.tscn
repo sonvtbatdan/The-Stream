@@ -50,7 +50,8 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 text = "Placeholder description."
-autowrap_mode = 3
+clip_text = true
+text_overrun_behavior = 4
 
 [node name="CountLabel" type="Label" parent="Margin/VBox/BottomRow"]
 unique_name_in_owner = true

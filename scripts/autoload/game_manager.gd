@@ -73,7 +73,7 @@ var parasocial: float = 1.0
 
 # Player-editable stat display template. The setter emits stat_template_changed
 # so consumers (stat_panel.gd) can re-render. Locked per the rewrite spec.
-var stat_template: String = "Views: {views}\nSubs: {subs}\nCash: ${cash}\nClick: x{click_power}":
+var stat_template: String = "Views: {views}\nSubs: {subs}\nCash: ${cash}\nClick: x{click_power}\nVPS: {vps}":
 	set(value):
 		if stat_template == value:
 			return
@@ -330,6 +330,9 @@ func get_donation_rate_estimate() -> float:
 # ---------------------------------------------------------------------------
 
 func render_stat_template() -> String:
+	# Total views per second = passive VPS tools + autoclickers (which scale
+	# with click_power). Truncated to int so format_count can handle it.
+	var total_vps: int = int(vps + auto_click_rate * click_power)
 	return stat_template \
 		.replace("{views}", format_count(views)) \
 		.replace("{subs}", format_count(subs)) \
@@ -338,7 +341,8 @@ func render_stat_template() -> String:
 		.replace("{cash}", format_count(int(cash))) \
 		.replace("{goal}", format_count(current_goal)) \
 		.replace("{run}", str(run)) \
-		.replace("{time}", get_time_string())
+		.replace("{time}", get_time_string()) \
+		.replace("{vps}", format_count(total_vps))
 
 # ---------------------------------------------------------------------------
 # Legacy compatibility shims

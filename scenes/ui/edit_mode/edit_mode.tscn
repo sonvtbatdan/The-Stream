@@ -247,7 +247,7 @@ horizontal_alignment = 1
 
 [node name="HelpLabel" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2
-text = "{views} {subs} {click_power} {parasocial} {cash} {goal} {run} {time}"
+text = "{views} {subs} {vps} {click_power} {parasocial} {cash} {goal} {run} {time}"
 autowrap_mode = 3
 
 [node name="StatTemplateEdit" type="TextEdit" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]

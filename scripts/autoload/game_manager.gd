@@ -31,9 +31,7 @@ const C_CONST: float = 0.0181
 # ---------------------------------------------------------------------------
 
 # Float accumulators so sub-integer changes don't get truncated each tick.
-# _subs starts at the base sub count so the log-rate sub growth and donation
-# Poisson rate both have a non-degenerate starting condition.
-var _subs: float = 10.0
+var _subs: float = 0.0
 # View accumulator — grows only from clicks (via on_view_clicked, +click_power
 # each) and shrinks only from spend_views (tool purchases). No passive growth.
 var _passive_views: float = 0.0

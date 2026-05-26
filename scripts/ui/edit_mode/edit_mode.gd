@@ -20,6 +20,8 @@ const ALL_UPGRADES_DEFAULT_POS := Vector2(20.0, 20.0)
 @onready var file_dialog: FileDialog = $FileDialog
 @onready var unsaved_dialog: Window = $UnsavedDialog
 
+@onready var stat_template_edit: TextEdit = $SidePanel/VBox/StatInfoPanel/StatVBox/StatTemplateEdit
+
 @onready var btn_screen: Button   = $SidePanel/VBox/TopHBox/ButtonsColumn/ScreenBtn
 @onready var btn_upgrade: Button  = $SidePanel/VBox/TopHBox/ButtonsColumn/UpgradeBtn
 @onready var btn_visual: Button   = $SidePanel/VBox/TopHBox/ButtonsColumn/VisualBtn
@@ -51,6 +53,8 @@ func _ready() -> void:
 	object_list_panel.file_dropped.connect(_on_file_dropped)
 	object_list_panel.z_indices_changed.connect(_sort_canvas_z_order)
 	title_bar.gui_input.connect(_on_title_bar_input)
+	stat_template_edit.text = GameManager.stat_template
+	stat_template_edit.text_changed.connect(_on_stat_template_text_changed)
 	transform_panel.connect("transform_changed", _on_transform_live)
 	_set_edit_ui_visible(false)
 	_load_layout()
@@ -61,6 +65,9 @@ func _set_edit_ui_visible(v: bool) -> void:
 	side_panel.visible = v
 	if not v:
 		_dragging_panel = false   # never resume a drag after the panel hides
+
+func _on_stat_template_text_changed() -> void:
+	GameManager.stat_template = stat_template_edit.text
 
 func _on_title_bar_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:

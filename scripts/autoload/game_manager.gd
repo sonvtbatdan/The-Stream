@@ -2,6 +2,7 @@ extends Node
 
 signal views_changed(new_views: int)
 signal subs_changed(new_subs: int)
+signal stat_template_changed(template: String)
 
 # Internal storage is float so passive sub growth can accumulate fractionally
 # below 1 sub/sec without ever appearing to "tick" at integer-only resolution.
@@ -16,6 +17,18 @@ var views: int:
 	get: return int(_views)
 var subs: int:
 	get: return int(_subs)
+
+# Player-editable stat display template. Edited via the TextEdit in F4's
+# StatInfoPanel; rendered by stat_panel.gd onto the on-screen StatPanel.
+# Supports placeholders: {views} {subs} {click_power} {parasocial} {cash}
+# {goal} {run} {time}. Anything else is left as literal text, so the player
+# can write any layout they want and reorder lines freely.
+var stat_template: String = "Views: {views}\nSubs: {subs}\nClick: x{click_power}":
+	set(value):
+		if stat_template == value:
+			return
+		stat_template = value
+		stat_template_changed.emit(value)
 
 # Per-click view yield. Increased by future upgrades.
 var click_power: float = 1.0
@@ -63,6 +76,20 @@ func _emit_if_changed() -> void:
 	if si != _last_subs_int:
 		_last_subs_int = si
 		subs_changed.emit(si)
+
+# Substitutes the supported placeholders in stat_template with current values.
+# Unknown placeholders (e.g. {foo}) are left untouched so the player can use
+# braces as literal text without escaping.
+func render_stat_template() -> String:
+	return stat_template \
+		.replace("{views}", str(views)) \
+		.replace("{subs}", str(subs)) \
+		.replace("{click_power}", str(click_power)) \
+		.replace("{parasocial}", str(parasocial)) \
+		.replace("{cash}", str(cash)) \
+		.replace("{goal}", str(current_goal)) \
+		.replace("{run}", str(run)) \
+		.replace("{time}", get_time_string())
 
 
 # ---------------------------------------------------------------------------

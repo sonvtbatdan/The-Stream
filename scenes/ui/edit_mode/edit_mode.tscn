@@ -227,7 +227,7 @@ text = "Apply"
 
 [node name="StatInfoPanel" type="Panel" parent="SidePanel/VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 160)
+custom_minimum_size = Vector2(0, 200)
 
 [node name="StatVBox" type="VBoxContainer" parent="SidePanel/VBox/StatInfoPanel"]
 layout_mode = 1
@@ -242,24 +242,17 @@ theme_override_constants/separation = 4
 
 [node name="StatTitle" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2
-text = "Stat"
+text = "Stat Template"
 horizontal_alignment = 1
 
-[node name="GoalInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
+[node name="HelpLabel" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2
-text = "Goal: 100 Views"
+text = "{views} {subs} {click_power} {parasocial} {cash} {goal} {run} {time}"
+autowrap_mode = 3
 
-[node name="CashInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
+[node name="StatTemplateEdit" type="TextEdit" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
 layout_mode = 2
-text = "Cash: $0.00"
-
-[node name="RunInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
-layout_mode = 2
-text = "Run: 1"
-
-[node name="TimeInfo" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
-layout_mode = 2
-text = "Time: 00:00"
+size_flags_vertical = 3
 
 [node name="FileDialog" type="FileDialog" parent="."]
 title = "Upload Image"

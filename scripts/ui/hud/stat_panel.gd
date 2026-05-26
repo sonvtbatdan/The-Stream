@@ -1,29 +1,21 @@
 extends PanelContainer
 
-@onready var goal_label: Label = %GoalLabel
-@onready var cash_label: Label = %CashLabel
-@onready var run_label: Label = %RunLabel
-@onready var time_label: Label = %TimeLabel
+@onready var template_label: Label = %TemplateLabel
 
 func _ready() -> void:
 	var font := load("res://fonts/GoodOldDOS.ttf") as FontFile
 	if font:
-		for lbl: Label in [goal_label, cash_label, run_label, time_label]:
-			lbl.add_theme_font_override("font", font)
-	GameManager.views_changed.connect(_on_views_changed)
-	GameManager.cash_changed.connect(_on_cash_changed)
+		template_label.add_theme_font_override("font", font)
+	GameManager.stat_template_changed.connect(_on_template_changed)
+	GameManager.views_changed.connect(_on_value_changed)
+	GameManager.subs_changed.connect(_on_value_changed)
 	_refresh()
 
-func _process(_delta: float) -> void:
-	time_label.text = "Time: " + GameManager.get_time_string()
+func _on_template_changed(_template: String) -> void:
+	_refresh()
+
+func _on_value_changed(_value: int) -> void:
+	_refresh()
 
 func _refresh() -> void:
-	goal_label.text = "Goal: %d Views" % GameManager.current_goal
-	cash_label.text = "Cash: $%.2f" % GameManager.cash
-	run_label.text = "Run: %d" % GameManager.run
-
-func _on_views_changed(new_views: int) -> void:
-	goal_label.text = "Goal: %d / %d Views" % [new_views, GameManager.current_goal]
-
-func _on_cash_changed(new_cash: float) -> void:
-	cash_label.text = "Cash: $%.2f" % new_cash
+	template_label.text = GameManager.render_stat_template()

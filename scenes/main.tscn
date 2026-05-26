@@ -309,25 +309,10 @@ layout_mode = 2
 text = "Stat"
 horizontal_alignment = 1
 
-[node name="GoalLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
+[node name="TemplateLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Goal: 100 Views"
-
-[node name="CashLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Cash: $0.00"
-
-[node name="RunLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Run: 1"
-
-[node name="TimeLabel" type="Label" parent="MarginContainer/HBoxMain/RightColumn/StatPanel/StatVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Time: 00:00"
+text = ""
 
 [node name="EditMode" parent="." instance=ExtResource("5")]
 

@@ -1,27 +1,40 @@
-# Music player widget.
-# Paste a YouTube URL → press Enter or ▶ to play (title fetched simultaneously).
+# Music player widget — shows now-playing title, time bar, next-4-songs queue,
+# URL input, and playback controls at the bottom.
 class_name UserMusicPlayer
 extends Panel
 
-const PANEL_W  := 460.0
-const PANEL_H  := 195.0
+const PANEL_W   := 460.0
+const PANEL_H   := 255.0
 const YT_OEMBED := "https://www.youtube.com/oembed?url=%s&format=json"
 
 var _server: UserMusicServer
-var _playing  := false
-var _muted    := false
-var _volume   := 1.0
-var _loading  := false
-var _load_t   := 0.0
+var _playing       := false
+var _paused        := false   # true while paused (content still loaded in mpv)
+var _muted         := false
+var _volume        := 1.0
+var _loading       := false
+var _load_t        := 0.0
+var _playlist_mode := false
+var _duration      := 0.0
+var _cur_pos       := 0.0
+var _playlist_pos  := -1
+var _seeking       := false
+var _upd_seek      := false   # true while programmatically setting seek bar value
 
-var _url_input:    LineEdit
-var _title_lbl:    _MarqueeLabel
-var _play_btn:     Button
-var _mute_btn:     Button
-var _vol_slider:   HSlider
-var _status_lbl:   LineEdit
+var _url_input:   LineEdit
+var _title_lbl:   _MarqueeLabel
+var _play_btn:    Button
+var _mute_btn:    Button
+var _vol_slider:  HSlider
+var _status_lbl:  LineEdit
+var _elapsed_lbl: Label
+var _remain_lbl:  Label
+var _seek_bar:    HSlider
+var _song_btns:   Array = []   # Array[Button], 4 entries
 
 var _http_title: HTTPRequest
+
+# ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_W, PANEL_H)
@@ -34,16 +47,22 @@ func _ready() -> void:
 	_server.browser_connected.connect(_on_browser_connected)
 	_server.browser_disconnected.connect(_on_browser_disconnected)
 	_server.start_failed.connect(_on_start_failed)
+	_server.playlist_loaded.connect(_on_playlist_loaded)
+	_server.time_changed.connect(_on_time_changed)
+	_server.duration_changed.connect(_on_duration_changed)
+	_server.playlist_pos_changed.connect(_on_playlist_pos_changed)
 
 	_http_title = HTTPRequest.new()
 	add_child(_http_title)
 	_http_title.request_completed.connect(_on_title_fetched)
 
 func _process(delta: float) -> void:
-	if not _loading:
+	if _playlist_mode or not _loading:
 		return
 	_load_t += delta
 	_status_lbl.text = "Connecting... (%.0fs)" % _load_t
+
+# ── Style ─────────────────────────────────────────────────────────────────────
 
 func _apply_style() -> void:
 	var s := StyleBoxFlat.new()
@@ -59,40 +78,96 @@ func _apply_style() -> void:
 	s.corner_radius_bottom_right = 6
 	add_theme_stylebox_override("panel", s)
 
-func _build_ui() -> void:
-	var root := VBoxContainer.new()
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root.offset_left   = 14
-	root.offset_top    = 10
-	root.offset_right  = -14
-	root.offset_bottom = -10
-	root.add_theme_constant_override("separation", 8)
-	add_child(root)
+# ── UI build ──────────────────────────────────────────────────────────────────
 
-	# ── URL row ──────────────────────────────────────────────────
+func _build_ui() -> void:
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.offset_left   = 14
+	vbox.offset_top    = 8
+	vbox.offset_right  = -14
+	vbox.offset_bottom = -8
+	vbox.add_theme_constant_override("separation", 4)
+	add_child(vbox)
+
+	# ── Current song title (marquee) ──────────────────────────────
+	_title_lbl = _MarqueeLabel.new()
+	_title_lbl.set_text("—")
+	_title_lbl.set_style(Color(0.85, 0.92, 1.0), 13)
+	_title_lbl.custom_minimum_size = Vector2(0, 20)
+	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_title_lbl)
+
+	# ── Time row: elapsed | seek bar | remaining ──────────────────
+	var time_row := HBoxContainer.new()
+	time_row.add_theme_constant_override("separation", 4)
+	vbox.add_child(time_row)
+
+	_elapsed_lbl = Label.new()
+	_elapsed_lbl.text = "--:--"
+	_elapsed_lbl.custom_minimum_size = Vector2(36, 0)
+	_elapsed_lbl.add_theme_font_size_override("font_size", 10)
+	_elapsed_lbl.add_theme_color_override("font_color", Color(0.6, 0.72, 0.9))
+	_elapsed_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	time_row.add_child(_elapsed_lbl)
+
+	_seek_bar = HSlider.new()
+	_seek_bar.min_value = 0.0
+	_seek_bar.max_value = 1.0
+	_seek_bar.step      = 0.0001
+	_seek_bar.value     = 0.0
+	_seek_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_seek_bar.value_changed.connect(_on_seek_changed)
+	_seek_bar.gui_input.connect(_on_seek_input)
+	time_row.add_child(_seek_bar)
+
+	_remain_lbl = Label.new()
+	_remain_lbl.text = "--:--"
+	_remain_lbl.custom_minimum_size = Vector2(40, 0)
+	_remain_lbl.add_theme_font_size_override("font_size", 10)
+	_remain_lbl.add_theme_color_override("font_color", Color(0.45, 0.55, 0.75))
+	_remain_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_remain_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	time_row.add_child(_remain_lbl)
+
+	# ── Next 4 songs (flat buttons, hidden when not in playlist) ──
+	for i in 4:
+		var btn := Button.new()
+		btn.flat = true
+		btn.text = ""
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.custom_minimum_size = Vector2(0, 20)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.add_theme_font_size_override("font_size", 10)
+		btn.add_theme_color_override("font_color", Color(0.5, 0.62, 0.82, 0.85))
+		btn.pressed.connect(_on_next_song_pressed.bind(i))
+		btn.visible = false
+		_song_btns.append(btn)
+		vbox.add_child(btn)
+
+	# ── Spacer — pushes controls to bottom ────────────────────────
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(spacer)
+
+	# ── URL input ─────────────────────────────────────────────────
 	_url_input = LineEdit.new()
 	_url_input.placeholder_text = "Paste YouTube link…"
 	_url_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_url_input.add_theme_color_override("font_placeholder_color", Color(0.45, 0.45, 0.45))
+	_url_input.add_theme_color_override("font_placeholder_color", Color(0.4, 0.4, 0.4))
+	_url_input.add_theme_font_size_override("font_size", 11)
 	_url_input.text_submitted.connect(_on_url_submitted)
-	root.add_child(_url_input)
+	vbox.add_child(_url_input)
 
-	# ── Scrolling song name ───────────────────────────────────────
-	_title_lbl = _MarqueeLabel.new()
-	_title_lbl.set_text("—")
-	_title_lbl.set_style(Color(0.8, 0.9, 1.0), 12)
-	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(_title_lbl)
-
-	# ── Controls row ─────────────────────────────────────────────
+	# ── Controls row: ▶/⏸  [volume]  🔇 ─────────────────────────
 	var ctrl_row := HBoxContainer.new()
-	ctrl_row.add_theme_constant_override("separation", 6)
-	root.add_child(ctrl_row)
+	ctrl_row.add_theme_constant_override("separation", 4)
+	vbox.add_child(ctrl_row)
 
 	_play_btn = Button.new()
 	_play_btn.text = "▶"
-	_play_btn.custom_minimum_size = Vector2(36, 36)
+	_play_btn.custom_minimum_size = Vector2(30, 30)
 	_play_btn.pressed.connect(_on_play_pressed)
 	ctrl_row.add_child(_play_btn)
 
@@ -102,17 +177,10 @@ func _build_ui() -> void:
 
 	_mute_btn = Button.new()
 	_mute_btn.text = "🔇"
-	_mute_btn.custom_minimum_size = Vector2(36, 36)
+	_mute_btn.custom_minimum_size = Vector2(30, 30)
 	_mute_btn.toggle_mode = true
 	_mute_btn.toggled.connect(_on_mute_toggled)
 	ctrl_row.add_child(_mute_btn)
-
-	var test_btn := Button.new()
-	test_btn.text = "♪"
-	test_btn.custom_minimum_size = Vector2(28, 36)
-	test_btn.tooltip_text = "Sound test (Godot audio)"
-	test_btn.pressed.connect(_on_sound_test_pressed)
-	ctrl_row.add_child(test_btn)
 
 	# ── Status ────────────────────────────────────────────────────
 	_status_lbl = LineEdit.new()
@@ -120,15 +188,15 @@ func _build_ui() -> void:
 	_status_lbl.editable = false
 	_status_lbl.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
 	_status_lbl.add_theme_font_size_override("font_size", 10)
-	var _empty_style := StyleBoxEmpty.new()
-	_status_lbl.add_theme_stylebox_override("normal",    _empty_style)
-	_status_lbl.add_theme_stylebox_override("read_only", _empty_style)
-	_status_lbl.add_theme_stylebox_override("focus",     _empty_style)
-	root.add_child(_status_lbl)
+	var es := StyleBoxEmpty.new()
+	_status_lbl.add_theme_stylebox_override("normal",    es)
+	_status_lbl.add_theme_stylebox_override("read_only", es)
+	_status_lbl.add_theme_stylebox_override("focus",     es)
+	vbox.add_child(_status_lbl)
 
 func _build_vol_container() -> Control:
 	var container := Control.new()
-	container.custom_minimum_size = Vector2(0, 36)
+	container.custom_minimum_size = Vector2(0, 30)
 
 	var triangle: Control = _TriangleDraw.new()
 	triangle.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -146,7 +214,79 @@ func _build_vol_container() -> Control:
 
 	return container
 
-# ── Callbacks ────────────────────────────────────────────────────────────────
+# ── Time / seek callbacks ─────────────────────────────────────────────────────
+
+func _on_time_changed(pos: float) -> void:
+	_cur_pos = pos
+	_elapsed_lbl.text = _fmt_time(pos)
+	if _duration > 0.0:
+		_remain_lbl.text = "-" + _fmt_time(_duration - pos)
+		if not _seeking:
+			_upd_seek = true
+			_seek_bar.value = pos / _duration
+			_upd_seek = false
+
+func _on_duration_changed(dur: float) -> void:
+	_duration = dur
+
+func _on_seek_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_seeking = true
+		else:
+			_seeking = false
+			if _duration > 0.0:
+				_server.seek_to(_seek_bar.value * _duration)
+
+func _on_seek_changed(val: float) -> void:
+	if _upd_seek or _duration <= 0.0:
+		return
+	_elapsed_lbl.text = _fmt_time(val * _duration)
+	_remain_lbl.text  = "-" + _fmt_time(_duration - val * _duration)
+
+func _fmt_time(secs: float) -> String:
+	if secs < 0.0:
+		secs = 0.0
+	var s := int(secs)
+	return "%d:%02d" % [s / 60, s % 60]
+
+# ── Playlist queue callbacks ──────────────────────────────────────────────────
+
+func _on_playlist_pos_changed(idx: int) -> void:
+	_playlist_pos = idx
+	_duration = 0.0
+	_cur_pos  = 0.0
+	_elapsed_lbl.text = "--:--"
+	_remain_lbl.text  = "--:--"
+	_seek_bar.value   = 0.0
+	if idx >= 0 and idx < _server.playlist_ids.size():
+		_fetch_title("https://www.youtube.com/watch?v=" + _server.playlist_ids[idx])
+	_update_queue_btns()
+
+func _update_queue_btns() -> void:
+	var t_arr := _server.playlist_titles
+	var i_arr := _server.playlist_ids
+	for i in 4:
+		var btn: Button = _song_btns[i]
+		var si := _playlist_pos + 1 + i
+		if si >= 0 and si < i_arr.size():
+			var title: String = t_arr[si] if si < t_arr.size() else i_arr[si]
+			btn.text = "%d.  %s" % [si + 1, title]
+			btn.visible = true
+		else:
+			btn.text = ""
+			btn.visible = false
+
+func _on_next_song_pressed(btn_idx: int) -> void:
+	var si := _playlist_pos + 1 + btn_idx
+	if si < _server.playlist_ids.size():
+		_playlist_pos = si
+		var titles := _server.playlist_titles
+		_title_lbl.set_text(titles[si] if si < titles.size() else _server.playlist_ids[si])
+		_update_queue_btns()
+		_server.skip_to(si)
+
+# ── URL / playback callbacks ──────────────────────────────────────────────────
 
 func _on_url_submitted(url: String) -> void:
 	url = url.strip_edges()
@@ -154,8 +294,7 @@ func _on_url_submitted(url: String) -> void:
 		return
 	_url_input.text = url
 	_fetch_title(url)
-	if not _playing:
-		_on_play_pressed()
+	_play_url(url)
 
 func _fetch_title(url: String) -> void:
 	_title_lbl.set_text("Fetching…")
@@ -171,27 +310,56 @@ func _on_title_fetched(_res: int, code: int, _hdrs: PackedStringArray, body: Pac
 		_title_lbl.set_text("Unknown title")
 
 func _on_play_pressed() -> void:
-	if not _playing:
+	if _playing:
+		_playing = false
+		_paused  = true
+		_play_btn.text = "▶"
+		_server.send({"cmd": "pause"})
+	elif _paused:
+		_playing = true
+		_paused  = false
+		_play_btn.text = "⏸"
+		_server.send({"cmd": "play"})
+	else:
 		var url := _url_input.text.strip_edges()
-		if url.is_empty():
-			_status_lbl.text = "Enter a YouTube URL first."
-			return
+		_fetch_title(url)
+		_play_url(url)
+
+func _play_url(url: String) -> void:
+	if url.is_empty():
+		_status_lbl.text = "Enter a YouTube URL first."
+		return
+	_paused  = false
+	_playing = true
+	_play_btn.text = "⏸"
+	_duration = 0.0
+	_cur_pos  = 0.0
+	_elapsed_lbl.text = "--:--"
+	_remain_lbl.text  = "--:--"
+	_seek_bar.value   = 0.0
+	_playlist_pos = -1
+	for btn in _song_btns:
+		(btn as Button).visible = false
+	if _is_playlist_url(url):
+		_playlist_mode = true
+		_loading = false
+		_status_lbl.text = "Loading playlist…"
+		_server.fetch_playlist_async(url)
+	else:
 		var vid_id := _extract_video_id(url)
 		if vid_id.is_empty():
 			_status_lbl.text = "Invalid YouTube URL."
+			_playing = false
+			_play_btn.text = "▶"
 			return
-		_fetch_title(url)
-		_playing = true
-		_loading = true
+		_playlist_mode = false
+		_loading = not _server._connected
 		_load_t  = 0.0
-		_play_btn.text = "⏸"
-		_server.open_video(vid_id)
-	else:
-		_playing = false
-		_loading = false
-		_play_btn.text = "▶"
-		_server.send({"cmd": "pause"})
 		_status_lbl.text = ""
+		_server.open_video(vid_id)
+
+func _is_playlist_url(url: String) -> bool:
+	return "list=" in url and "start_radio=" in url
 
 func _on_mute_toggled(pressed: bool) -> void:
 	_muted = pressed
@@ -203,10 +371,10 @@ func _on_volume_changed(val: float) -> void:
 
 func _on_browser_connected() -> void:
 	_loading = false
-	_status_lbl.text = ""
 	_server.send({"cmd": "volume", "v": _volume})
-	if _playing:
+	if _playing and not _playlist_mode:
 		_server.send({"cmd": "play"})
+		_status_lbl.text = ""
 
 func _on_browser_disconnected() -> void:
 	if _playing:
@@ -215,47 +383,28 @@ func _on_browser_disconnected() -> void:
 func _on_start_failed(reason: String) -> void:
 	_playing = false
 	_loading = false
+	_playlist_mode = false
 	_play_btn.text = "▶"
 	_status_lbl.text = reason
 
-func _on_sound_test_pressed() -> void:
-	# Debug: show audio bus state
-	var bus_count := AudioServer.get_bus_count()
-	var master_vol := AudioServer.get_bus_volume_db(0)
-	var master_mute := AudioServer.is_bus_mute(0)
-	_status_lbl.text = "buses:%d master:%.0fdB mute:%s" % [bus_count, master_vol, master_mute]
+func _on_playlist_loaded(ids: Array) -> void:
+	_playlist_mode = false
+	_loading = false
+	if ids.is_empty():
+		_status_lbl.text = "Playlist failed to load."
+		_playing = false
+		_play_btn.text = "▶"
+	else:
+		_status_lbl.text = "%d songs queued" % ids.size()
+		_playlist_pos = 0
+		var titles := _server.playlist_titles
+		if not titles.is_empty():
+			_title_lbl.set_text(titles[0])
+		_update_queue_btns()
+		_server.send({"cmd": "volume", "v": _volume})
+		_server.send({"cmd": "play"})
 
-	# Build a 440 Hz sine wave as PCM into AudioStreamWAV (no push_frame timing issues)
-	var sample_rate := 44100
-	var duration    := 0.6
-	var n_samples   := int(sample_rate * duration)
-	var data        := PackedByteArray()
-	data.resize(n_samples * 2)  # 16-bit mono
-	for i in n_samples:
-		var t      := float(i) / sample_rate
-		var env    := 1.0 - t / duration
-		var sample := int(sin(TAU * 440.0 * t) * 0.8 * env * 32767.0)
-		data[i * 2]     = sample & 0xFF
-		data[i * 2 + 1] = (sample >> 8) & 0xFF
-
-	var wav := AudioStreamWAV.new()
-	wav.data      = data
-	wav.format    = AudioStreamWAV.FORMAT_16_BITS
-	wav.mix_rate  = sample_rate
-	wav.stereo    = false
-	wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
-
-	var player := AudioStreamPlayer.new()
-	player.volume_db = 0.0
-	player.bus = "Master"
-	add_child(player)
-	player.stream = wav
-	player.play()
-
-	await get_tree().create_timer(0.8).timeout
-	player.queue_free()
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 func _extract_video_id(url: String) -> String:
 	if "youtu.be/" in url:
@@ -269,8 +418,8 @@ func _extract_video_id(url: String) -> String:
 
 # ── Inner: scrolling label ────────────────────────────────────────────────────
 class _MarqueeLabel extends Control:
-	const SPEED := 50.0   # px / sec
-	const PAUSE := 2.0    # sec pause at each end
+	const SPEED := 50.0
+	const PAUSE := 2.0
 
 	var _lbl:  Label
 	var _ox    := 0.0

@@ -81,6 +81,7 @@ func _ready() -> void:
 func _set_edit_ui_visible(v: bool) -> void:
 	dim_overlay.visible = v
 	side_panel.visible = v
+	objects_container.visible = v
 	if not v:
 		_dragging_panel = false
 		_canvas_dragging = false

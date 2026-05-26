@@ -1,5 +1,6 @@
 # mpv-bridge.ps1
 # Starts mpv with Windows named-pipe IPC, then bridges TCP → pipe.
+# Requires mpv.exe + yt-dlp.exe inside the same tools/ directory.
 param([int]$TcpPort = 12736)
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
@@ -8,7 +9,6 @@ if (-not $toolsDir) { $toolsDir = Split-Path -Parent $PSCommandPath }
 
 $logFile  = Join-Path $toolsDir "mpv-bridge.log"
 $mpvExe   = Join-Path $toolsDir "mpv.exe"
-$ytdlpExe = Join-Path $toolsDir "yt-dlp.exe"
 $pipeName = "mpv-godot"
 
 function Log($msg) {
@@ -24,17 +24,18 @@ $old = Get-Process mpv -ErrorAction SilentlyContinue
 if ($old) {
     Log "Killing $($old.Count) orphaned mpv process(es)"
     $old | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 400   # let the pipe and port free up
+    Start-Sleep -Milliseconds 400
 }
 
 # ── Launch mpv via ProcessStartInfo (precise argument control) ────────────────
 try {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName       = $mpvExe
-    $psi.Arguments      = "--no-video --no-terminal --force-window=no --idle=yes --input-ipc-server=$pipeName"
-    $psi.WindowStyle    = [System.Diagnostics.ProcessWindowStyle]::Hidden
-    $psi.CreateNoWindow = $true
-    $psi.UseShellExecute = $false
+    $psi.FileName          = $mpvExe
+    $psi.Arguments         = "--no-video --no-terminal --force-window=no --idle=yes --input-ipc-server=$pipeName --log-file=mpv-player.log --ytdl-raw-options=extractor-args=youtube:player_client=android"
+    $psi.WorkingDirectory  = $toolsDir
+    $psi.WindowStyle       = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $psi.CreateNoWindow    = $true
+    $psi.UseShellExecute   = $false
     $psi.EnvironmentVariables["PATH"] = "$toolsDir;" + $psi.EnvironmentVariables["PATH"]
     $mpv = [System.Diagnostics.Process]::Start($psi)
     Log "mpv PID=$($mpv.Id)"
@@ -43,7 +44,7 @@ try {
     exit 1
 }
 
-# ── Quick sanity check: mpv should survive at least 1 second ─────────────────
+# ── Quick sanity check ────────────────────────────────────────────────────────
 Start-Sleep -Milliseconds 1000
 if ($mpv.HasExited) {
     Log "ERROR: mpv exited immediately (ExitCode=$($mpv.ExitCode))"
@@ -66,18 +67,12 @@ while ([DateTime]::Now -lt $deadline) {
         break
     } catch {
         if ($null -ne $p) { try { $p.Dispose() } catch {} }
-        # Log each failure for first 3 attempts
         if ($attempts -le 3) { Log "  pipe attempt $attempts failed: $($_.Exception.Message)" }
         [System.Threading.Thread]::Sleep(300)
     }
 }
 if ($null -eq $pipe) {
     Log "ERROR: pipe timeout after $attempts attempts"
-    # Dump any new IPC-related lines from mpv log
-    if (Test-Path $mpvLog) {
-        Get-Content $mpvLog | Where-Object { $_ -match "ipc|pipe|socket|error" } |
-            ForEach-Object { Log "  mpv> $_" }
-    }
     if (-not $mpv.HasExited) { try { $mpv.Kill() } catch {} }
     exit 1
 }

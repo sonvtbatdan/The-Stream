@@ -72,11 +72,12 @@ func _build_ui() -> void:
 	vbox.add_theme_constant_override("separation", 4)
 	add_child(vbox)
 
-	_city_lbl    = _make_label("---", 11, Color(0.75, 0.85, 1.0))
-	_weather_lbl = _make_label("---", 11, Color(0.85, 0.95, 0.75))
-	_clock_lbl   = _make_label("--:--", 32, Color(1.0, 1.0, 1.0))
-	_elapsed_lbl   = _make_label("ELAPSED: --:--", 10, Color(0.65, 0.75, 0.65))
-	_remaining_lbl = _make_label("REMAINING: --:--", 10, Color(0.75, 0.65, 0.65))
+	var font := load("res://assets/fonts/Gameplay.ttf") as FontFile
+	_city_lbl    = _make_label("---",              11, Color(0.75, 0.85, 1.0),        font)
+	_weather_lbl = _make_label("---",              11, Color(0.85, 0.95, 0.75),       font)
+	_clock_lbl   = _make_label("--:--",            32, Color(1.0,  1.0,  1.0),        font)
+	_elapsed_lbl   = _make_label("ELAPSED: --:--",   10, Color(0.65, 0.75, 0.65), font)
+	_remaining_lbl = _make_label("REMAINING: --:--", 10, Color(0.75, 0.65, 0.65), font)
 
 	vbox.add_child(_city_lbl)
 	vbox.add_child(_weather_lbl)

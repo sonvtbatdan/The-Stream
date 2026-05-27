@@ -6,6 +6,7 @@ extends CanvasLayer
 const SAVE_PATH    := "user://user_panel.cfg"
 const PANEL_W      := 500.0
 const PANEL_H      := 780.0
+const PANEL_SCALE  := 0.5
 const HANDLE_H     := 28.0
 const PAD          := 20.0
 const BOX_SIZE     := Vector2(200.0, 200.0)
@@ -35,6 +36,7 @@ func _ready() -> void:
 func _build() -> void:
 	_root = Panel.new()
 	_root.size = Vector2(PANEL_W, PANEL_H)
+	_root.scale = Vector2(PANEL_SCALE, PANEL_SCALE)
 	_apply_root_style()
 	add_child(_root)
 
@@ -148,8 +150,8 @@ func _input(event: InputEvent) -> void:
 		var vp  := get_viewport().get_visible_rect().size
 		var mp  := get_viewport().get_mouse_position()
 		var np  := mp + _drag_off
-		np.x = clampf(np.x, 0.0, vp.x - PANEL_W)
-		np.y = clampf(np.y, 0.0, vp.y - HANDLE_H)
+		np.x = clampf(np.x, 0.0, vp.x - PANEL_W * PANEL_SCALE)
+		np.y = clampf(np.y, 0.0, vp.y - PANEL_H * PANEL_SCALE)
 		_root.position = np
 		position_changed.emit(np)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:

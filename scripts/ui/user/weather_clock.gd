@@ -101,11 +101,13 @@ func _build_ui() -> void:
 	_http_geo.request_completed.connect(_on_geo_done)
 	_http_weather.request_completed.connect(_on_weather_done)
 
-func _make_label(txt: String, size: int, col: Color) -> Label:
+func _make_label(txt: String, size: int, col: Color, font: FontFile = null) -> Label:
 	var l := Label.new()
 	l.text = txt
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
+	if font:
+		l.add_theme_font_override("font", font)
 	return l
 
 func _process(delta: float) -> void:

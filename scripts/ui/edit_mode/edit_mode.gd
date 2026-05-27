@@ -210,6 +210,10 @@ func toggle() -> void:
 		_is_open = true
 		_set_edit_ui_visible(true)
 		_set_group(_active_group)
+		_user_editing = true
+		btn_user.button_pressed = true
+		if _user_panel and _user_panel.has_method("set_edit_mode"):
+			_user_panel.set_edit_mode(true)
 	else:
 		_request_close()
 

@@ -34,7 +34,7 @@ Root `Control` with these direct children:
 - `UserPanel` — `CanvasLayer` layer=5 (`scripts/ui/user_panel/user_panel.gd`): PANEL_SCALE=0.5, contains TodoList, MusicPlayer, WeatherClock
 - `ToolsColumn` — `Panel` with `scripts/ui/upgrade/upgrade_list.gd`: two tabs (VIEW / COMMENT)
 - `StatPanel` — `Panel` with `scripts/ui/hud/stat_panel.gd`: stat display + action bar (SETTING, QUIT)
-- `ChatbotPanel` — `scripts/ui/chatbot/chatbot_panel.gd`: Claude API chatbot with TTS
+- `ChatbotPanel` — `scripts/ui/chatbot/chatbot_panel.gd`: Chat display panel (AI backend disconnected; Whisper STT mic input active)
 - `EquipmentColumn` — equipment shop UI
 
 ### CanvasLayer conventions
@@ -131,7 +131,7 @@ const UPGRADES = {
 - `_build_action_bar()`: adds HSeparator + styled mini Panel + HBox (SETTING, QUIT) below StatVBox
 - Settings overlay: CanvasLayer(layer=100, PROCESS_MODE_ALWAYS) added to `get_tree().root`
   - ColorRect (0,0,0,0.6) with MOUSE_FILTER_STOP blocks all input to scene below
-  - Panel 310×580 with: Resolution section (720p/1080p/2K buttons), Voice section (OS TTS voices), Volume section (Music/Chatbot/SFX sliders)
+  - Panel 310×320 with: Resolution section (720p/1080p/2K buttons), Volume section (Music/SFX sliders)
 - `_open_settings()`: show overlay + `get_tree().paused = true`
 - `_close_settings()`: hide overlay + `get_tree().paused = false`
 - Escape key closes settings via `_input()`
@@ -155,13 +155,12 @@ const UPGRADES = {
 
 ### `scripts/ui/chatbot/chatbot_panel.gd`
 
-- Claude API streaming chatbot
-- TTS: `_tts_enabled`, `_tts_voice_id`, `_tts_volume`
-- `set_tts_voice(voice_id: String)` — called by stat_panel after voice selection
-- `set_tts_volume(vol: float)` — called by stat_panel volume slider
-- `_speak(text)` uses `DisplayServer.tts_speak(text, vid, int(vol * 100))`
-- `append_bot_message()` calls `_speak()` after displaying
-- 🔇/🔊 toggle button in input row
+- Chat display panel — AI backend currently disconnected
+- Whisper STT mic input still active (`godot_whisper` addon)
+- `UserTodoList` integration: `add_task()`, `set_task()`, `clear_task()` via `[CMD:todo_*]` tags
+- `_set_reminder()`: timer-based reminders via `[REMINDER:N:msg]` tags
+- `_build_context()`: builds game-state string (time, stats, upgrades, todo list) — ready to inject into future AI system prompt
+- `login_panel.gd` repurposed as API key entry panel (not spawned at startup)
 
 ### `scripts/ui/edit_mode/editable_object.gd`
 
@@ -192,7 +191,7 @@ EquipmentManager cost formula: `20 * pow(1.6, sorted_index)`
 |------|----------|
 | `game_save.cfg` | passive_views, subs, cash |
 | `upgrades_save.cfg` | owned counts per upgrade id + `factory/virtual_machines` |
-| `settings.cfg` | resolution (w, h), tts_voice, music_vol, sfx_vol, tts_vol |
+| `settings.cfg` | resolution (w, h), music_vol, sfx_vol; `[ai]` section: groq_api_key, tavily_api_key |
 | `layout.cfg` | positions/sizes of draggable groups |
 | `equipment.cfg` | owned equipment items |
 | `user_panel.cfg` | UserPanel widget states |
@@ -253,14 +252,6 @@ _overlay_layer.hide()
 get_tree().paused = false
 ```
 CanvasLayer with high `layer` value beats any Control node's `z_index` — use layer=100 for overlays that must appear above the "screen" group.
-
-### OS TTS (Windows SAPI)
-```gdscript
-var voices := DisplayServer.tts_get_voices()  # Array of {id, name, language}
-DisplayServer.tts_speak(text, voice_id, volume_0_to_100)
-DisplayServer.tts_stop()
-DisplayServer.tts_is_speaking() -> bool
-```
 
 ### Tabs for indentation (matches all existing files)
 

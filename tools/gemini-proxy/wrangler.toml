@@ -1,0 +1,10 @@
+name = "gemini-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
+
+[vars]
+# GEMINI_API_KEY is set as a Secret via dashboard (not here — never put secrets in wrangler.toml)

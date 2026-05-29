@@ -15,17 +15,28 @@ run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
+[audio]
+
+driver/enable_input=true
+driver/input_device="Analogue 1/2 (3- Audient iD14)"
+
 [autoload]
 
 GameManager="*res://scripts/autoload/game_manager.gd"
 UpgradeManager="*res://scripts/autoload/upgrade_manager.gd"
 AudioManager="*res://scripts/autoload/audio_manager.gd"
+EquipmentManager="*res://scripts/autoload/equipment_manager.gd"
+AuthManager="*res://scripts/autoload/auth_manager.gd"
 
 [display]
 
 window/size/viewport_width=1440
 window/size/viewport_height=780
 window/stretch/mode="canvas_items"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_whisper/plugin.cfg")
 
 [input]
 

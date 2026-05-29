@@ -75,17 +75,16 @@ func _build_ui() -> void:
 	var font := load("res://assets/fonts/Gameplay.ttf") as FontFile
 	_city_lbl    = _make_label("---",              11, Color(0.75, 0.85, 1.0),        font)
 	_weather_lbl = _make_label("---",              11, Color(0.85, 0.95, 0.75),       font)
-	_clock_lbl   = _make_label("--:--",            32, Color(1.0,  1.0,  1.0),        font)
-	_elapsed_lbl   = _make_label("ELAPSED: --:--",   10, Color(0.65, 0.75, 0.65), font)
-	_remaining_lbl = _make_label("REMAINING: --:--", 10, Color(0.75, 0.65, 0.65), font)
+	_clock_lbl   = _make_label("--:--",            50, Color(1.0,  1.0,  1.0),        font)
+	_elapsed_lbl   = _make_label("ELAPSED: --:--",   14, Color(0.65, 0.75, 0.65), font)
+	_remaining_lbl = _make_label("REMAINING: --:--", 14, Color(0.75, 0.65, 0.65), font)
+
+	_clock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_clock_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	_clock_lbl.size_flags_vertical  = Control.SIZE_EXPAND_FILL
 
 	vbox.add_child(_city_lbl)
 	vbox.add_child(_weather_lbl)
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(spacer)
-
 	vbox.add_child(_clock_lbl)
 
 	var sep := HSeparator.new()
@@ -181,4 +180,14 @@ func _load_session() -> void:
 
 func reset_session() -> void:
 	_start_time = Time.get_unix_time_from_system()
+	_save_session()
+
+func get_session_elapsed() -> float:
+	return Time.get_unix_time_from_system() - _start_time
+
+func get_session_remaining() -> float:
+	return maxf(0.0, _session_sec - get_session_elapsed())
+
+func extend_session(extra_seconds: float) -> void:
+	_session_sec += extra_seconds
 	_save_session()

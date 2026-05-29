@@ -3,10 +3,10 @@ extends Panel
 signal row_selected(canvas_obj: EditableObjectNode)
 signal order_changed(from_idx: int, to_idx: int)
 signal file_dropped(path: String)
-# Fired whenever z_index assignments change. The owning EditMode listens so
-# it can also reorder ObjectsContainer's children, since Godot routes GUI
-# input by tree order (later siblings win), not by z_index.
 signal z_indices_changed
+# Emitted when the Group Layer eye is clicked — the owning EditMode applies
+# the new visibility to every non-group-layer object in the group.
+signal group_layer_visibility_toggled(group_id: String, visible: bool)
 
 const ROW_HEIGHT := 56.0
 const THUMB_SIZE := 48.0
@@ -38,8 +38,7 @@ func set_group_label(group: String) -> void:
 
 func refresh(placed_objects: Array) -> void:
 	_clear()
-	# Pin the Group Layer row at the top; render all other rows
-	# below it in their original order.
+	# Pin the Group Layer row at the top.
 	var pinned: EditableObjectNode = null
 	for obj in placed_objects:
 		if is_instance_valid(obj) and _is_pinned(obj):
@@ -47,9 +46,15 @@ func refresh(placed_objects: Array) -> void:
 			break
 	if pinned != null:
 		_append_row(pinned)
+	# Sort non-pinned by z_index descending so the list order always matches
+	# the saved visual layer order, regardless of _placed[] array order.
+	var non_pinned: Array = []
 	for obj in placed_objects:
 		if is_instance_valid(obj) and not _is_pinned(obj):
-			_append_row(obj)
+			non_pinned.append(obj)
+	non_pinned.sort_custom(func(a, b): return a.z_index > b.z_index)
+	for obj in non_pinned:
+		_append_row(obj)
 	_update_z_indices()
 
 func add_placed_object(obj: EditableObjectNode) -> void:
@@ -99,7 +104,9 @@ func _append_row(obj: EditableObjectNode) -> void:
 	var tex: Texture2D = obj.texture_rect.texture if obj.texture_rect.texture else null
 	var row := _make_row(obj, tex)
 	item_vbox.add_child(row)
-	_rows.append({"row": row, "canvas_obj": obj})
+	var hbox_ref := row.get_child(0) as HBoxContainer
+	var eye_ref := hbox_ref.get_child(hbox_ref.get_child_count() - 1) as Button
+	_rows.append({"row": row, "canvas_obj": obj, "eye_btn": eye_ref})
 
 func _make_row(obj: EditableObjectNode, tex: Texture2D) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -139,11 +146,18 @@ func _make_row(obj: EditableObjectNode, tex: Texture2D) -> PanelContainer:
 	eye_btn.custom_minimum_size = Vector2(30, 0)
 	eye_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	eye_btn.modulate = Color.WHITE if obj.layer_visible else Color(1.0, 1.0, 1.0, 0.3)
-	eye_btn.toggled.connect(func(pressed: bool) -> void:
-		obj.layer_visible = pressed
-		obj.visible = pressed
-		eye_btn.modulate = Color.WHITE if pressed else Color(1.0, 1.0, 1.0, 0.3)
-	)
+	if obj.is_group_layer():
+		eye_btn.toggled.connect(func(pressed: bool) -> void:
+			obj.layer_visible = pressed
+			eye_btn.modulate = Color.WHITE if pressed else Color(1.0, 1.0, 1.0, 0.3)
+			group_layer_visibility_toggled.emit(obj.group_id, pressed)
+		)
+	else:
+		eye_btn.toggled.connect(func(pressed: bool) -> void:
+			obj.layer_visible = pressed
+			obj.visible = pressed
+			eye_btn.modulate = Color.WHITE if pressed else Color(1.0, 1.0, 1.0, 0.3)
+		)
 	hbox.add_child(eye_btn)
 
 	panel.gui_input.connect(_on_row_gui_input.bind(panel))
@@ -250,6 +264,17 @@ func get_selected_object() -> EditableObjectNode:
 	if _selected_row == null:
 		return null
 	return _canvas_obj_for_row(_selected_row)
+
+func update_visibility_buttons() -> void:
+	for entry in _rows:
+		var obj: EditableObjectNode = entry["canvas_obj"]
+		if not is_instance_valid(obj):
+			continue
+		var btn: Button = entry.get("eye_btn")
+		if btn == null or not is_instance_valid(btn):
+			continue
+		btn.button_pressed = obj.layer_visible
+		btn.modulate = Color.WHITE if obj.layer_visible else Color(1.0, 1.0, 1.0, 0.3)
 
 func _clear() -> void:
 	for c in item_vbox.get_children():

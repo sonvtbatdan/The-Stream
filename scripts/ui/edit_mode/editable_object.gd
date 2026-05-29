@@ -27,7 +27,9 @@ var _resize_start_rect := Rect2()
 var _gameplay_mode := false
 var _price_label: Label = null
 var _counter_label: Label = null
+var _vps_label: Label = null
 var _hover_tween: Tween = null
+var _pop_tween: Tween = null
 var _desc_panel: PanelContainer = null
 
 var selected := false:
@@ -61,6 +63,8 @@ func init(tex: Texture2D, pos: Vector2, sz := Vector2.ZERO) -> void:
 	_setup_counter_label()
 	_setup_price_label()
 	_setup_desc_panel()
+	if is_group_layer():
+		texture_rect.visible = false
 
 func _setup_counter_label() -> void:
 	if group_id != "screen":
@@ -68,13 +72,20 @@ func _setup_counter_label() -> void:
 	var base := source_path.get_file().get_basename().to_lower()
 	var initial := ""
 	if base == "view":
-		initial = GameManager.format_count(GameManager.views)
+		initial = GameManager.format_views(GameManager.views)
 		GameManager.views_changed.connect(func(v: int) -> void:
-			if is_instance_valid(_counter_label): _counter_label.text = GameManager.format_count(v))
+			if not is_instance_valid(_counter_label): return
+			_counter_label.text = GameManager.format_views(v)
+			_pop_counter())
 	elif base == "sub":
-		initial = GameManager.format_count(GameManager.subs)
+		initial = GameManager.format_views(GameManager.subs)
 		GameManager.subs_changed.connect(func(v: int) -> void:
-			if is_instance_valid(_counter_label): _counter_label.text = GameManager.format_count(v))
+			if is_instance_valid(_counter_label): _counter_label.text = GameManager.format_views(v))
+	elif base == "cash":
+		initial = "$" + GameManager.format_views(int(GameManager.cash))
+		GameManager.cash_changed.connect(func(v: float) -> void:
+			if not is_instance_valid(_counter_label): return
+			_counter_label.text = "$" + GameManager.format_views(int(v)))
 	else:
 		return
 	_counter_label = Label.new()
@@ -85,10 +96,25 @@ func _setup_counter_label() -> void:
 	_counter_label.add_theme_constant_override("outline_size", 3)
 	_counter_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_counter_label.position = Vector2(size.x + 6, size.y * 0.5 - 12)
-	var font := load("res://fonts/GoodOldDOS.ttf") as FontFile
+	var font := load("res://assets/fonts/Gameplay.ttf") as FontFile
 	if font:
 		_counter_label.add_theme_font_override("font", font)
 	add_child(_counter_label)
+
+	if base == "view":
+		_vps_label = Label.new()
+		_vps_label.visible = false
+		_vps_label.add_theme_color_override("font_color", Color(0.75, 0.90, 1.0, 0.9))
+		_vps_label.add_theme_font_size_override("font_size", 13)
+		_vps_label.add_theme_constant_override("outline_size", 2)
+		_vps_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		_vps_label.position = Vector2(size.x + 6, size.y * 0.5 + 12)
+		if font:
+			_vps_label.add_theme_font_override("font", font)
+		add_child(_vps_label)
+		UpgradeManager.upgrade_purchased.connect(func(_id: String) -> void: _refresh_vps_label())
+		GameManager.game_loaded.connect(func() -> void: _refresh_vps_label())
+		_refresh_vps_label()
 
 func _setup_price_label() -> void:
 	if group_id != "active" or is_group_layer():
@@ -159,16 +185,31 @@ func _setup_desc_panel() -> void:
 	add_child(_desc_panel)
 	_desc_panel.position = Vector2(size.x + 8.0, 0.0)
 
+func _pop_counter() -> void:
+	if not is_instance_valid(_counter_label): return
+	if _pop_tween and _pop_tween.is_running(): return
+	_pop_tween = create_tween()
+	_pop_tween.tween_property(_counter_label, "scale", Vector2(1.02, 1.02), 0.08)
+	_pop_tween.tween_property(_counter_label, "scale", Vector2.ONE, 0.15)
+
+func _refresh_vps_label() -> void:
+	if not is_instance_valid(_vps_label): return
+	var total_vps := int(GameManager.vps + GameManager.auto_click_rate * GameManager.click_power)
+	_vps_label.text = "VPS  " + GameManager.format_views(total_vps)
+
 func set_gameplay_mode(v: bool) -> void:
 	_gameplay_mode = v
 	if _counter_label:
 		_counter_label.visible = v
+	if _vps_label:
+		_vps_label.visible = v
 	if not v:
 		_hide_hover_immediate()
-	# Group layer is an editor-only handle — always hidden in gameplay.
-	# All other objects respect layer_visible (eye toggle).
-	if is_group_layer() and v:
-		visible = false
+	if is_group_layer():
+		visible = not v   # always shown in edit mode, always hidden in gameplay
+	elif v and group_id == "equipment":
+		var item_id := source_path.get_file().get_basename().to_lower()
+		visible = layer_visible and EquipmentManager.get_owned(item_id) >= 1
 	else:
 		visible = layer_visible
 
@@ -188,12 +229,19 @@ func _sync_rect_size() -> void:
 		_price_label.size = Vector2(size.x, 30.0)
 	if _counter_label:
 		_counter_label.position = Vector2(size.x + 6, size.y * 0.5 - 12)
+	if _vps_label:
+		_vps_label.position = Vector2(size.x + 6, size.y * 0.5 + 12)
 	if _desc_panel:
 		_desc_panel.position = Vector2(size.x + 8.0, 0.0)
 	queue_redraw()
 
 func _draw() -> void:
-	if not selected or _gameplay_mode:
+	if _gameplay_mode:
+		return
+	if is_group_layer():
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.06, 0.08, 0.12, 0.30), true)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.3, 0.4, 0.6, 0.85), false, 2.0)
+	if not selected:
 		return
 	draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 1.0, 1.0, 0.9), false, 2.0)
 	for r in _handle_rects():

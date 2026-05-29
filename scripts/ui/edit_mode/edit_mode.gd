@@ -1,14 +1,14 @@
 extends CanvasLayer
 
 const EditableObject := preload("res://scenes/ui/edit_mode/editable_object.tscn")
-const LAYOUT_PATH := "user://layout.cfg"
-const GROUPS := ["screen", "active", "passive", "stat"]
+const LAYOUT_PATH := "res://default_layout.cfg"
+const GROUPS := ["stat", "screen", "equipment"]
 const SCREEN_FIT_W := 1440.0
 const SCREEN_FIT_H := 780.0
 const GROUP_FOLDERS := {
-	"active": "upgrades/active",
-	"passive": "upgrades/passive",
+	"equipment": "upgrades/equipment",
 }
+const EQUIPMENT_FIXED_RECT := Rect2(270.0, 8.0, 700.0, 390.0)
 
 # Sentinel source_path for the synthetic Group Layer object.
 # Pinned at the top of each group's list; moving/resizing it propagates to
@@ -25,20 +25,31 @@ const GROUP_LAYER_DEFAULT_POS := Vector2(20.0, 20.0)
 @onready var file_dialog: FileDialog = $FileDialog
 @onready var unsaved_dialog: Window = $UnsavedDialog
 
-@onready var stat_template_edit: TextEdit = $SidePanel/VBox/StatInfoPanel/StatVBox/StatTemplateEdit
-
-@onready var btn_screen: Button      = $SidePanel/VBox/TopHBox/ButtonsColumn/ScreenBtn
-@onready var btn_upgrade: Button     = $SidePanel/VBox/TopHBox/ButtonsColumn/UpgradeBtn
-@onready var btn_visual: Button      = $SidePanel/VBox/TopHBox/ButtonsColumn/VisualBtn
-@onready var btn_stat: Button        = $SidePanel/VBox/TopHBox/ButtonsColumn/StatBtn
+@onready var btn_screen: Button       = $SidePanel/VBox/TopHBox/ButtonsColumn/ScreenBtn
+@onready var btn_equipment: Button    = $SidePanel/VBox/TopHBox/ButtonsColumn/EquipmentBtn
+@onready var btn_stat: Button         = $SidePanel/VBox/TopHBox/ButtonsColumn/StatBtn
 @onready var btn_user: Button        = $SidePanel/VBox/TopHBox/ButtonsColumn/UserBtn
-@onready var btn_fit_screen: Button  = $SidePanel/VBox/TopHBox/ButtonsColumn/FitScreenBtn
-@onready var btn_delete: Button      = $SidePanel/VBox/TopHBox/ButtonsColumn/DeleteBtn
+@onready var btn_view_panel: Button    = $SidePanel/VBox/TopHBox/ButtonsColumn/ViewPanelBtn
+@onready var btn_comment_panel: Button = $SidePanel/VBox/TopHBox/ButtonsColumn/CommentPanelBtn
+@onready var btn_chatbot: Button     = $SidePanel/VBox/TopHBox/ButtonsColumn/ChatbotBtn
+@onready var btn_fit_screen: Button    = $SidePanel/VBox/TopHBox/ButtonsColumn/FitScreenBtn
+@onready var btn_setup_screen: Button  = $SidePanel/VBox/TopHBox/ButtonsColumn/SetupScreenBtn
+@onready var btn_reset_screen: Button     = $SidePanel/VBox/TopHBox/ButtonsColumn/ResetScreenBtn
+@onready var btn_reset_equipment: Button  = $SidePanel/VBox/TopHBox/ButtonsColumn/ResetEquipmentBtn
+@onready var btn_delete: Button           = $SidePanel/VBox/TopHBox/ButtonsColumn/DeleteBtn
+@onready var btn_save: Button             = $SidePanel/VBox/TopHBox/ButtonsColumn/SaveBtn
+@onready var btn_upload: Button           = $SidePanel/VBox/TopHBox/ButtonsColumn/UploadBtn
 @onready var transform_panel         = $SidePanel/VBox/TransformPanel
 
 var _active_group := "screen"
 var _user_panel: Node = null      # UserPanel sibling node
 var _user_editing := false        # whether User edit mode is active
+var _view_panel_node: Node = null
+var _view_panel_editing := false
+var _comment_panel_node: Node = null
+var _comment_panel_editing := false
+var _chatbot_node: Node = null    # ChatbotPanel sibling node
+var _chatbot_editing := false     # whether Chatbot edit mode is active
 var _is_open := false
 var _dirty := false
 var _pending_object: Texture2D = null
@@ -60,6 +71,7 @@ var _selection_locked := false
 var _canvas_dragging := false
 var _canvas_drag_mouse_prev := Vector2.ZERO
 var _canvas_drag_undo_pushed := false
+var _layout_loaded := false
 
 func _ready() -> void:
 	layer = 10
@@ -70,10 +82,29 @@ func _ready() -> void:
 	object_list_panel.z_indices_changed.connect(_sort_canvas_z_order)
 	title_bar.gui_input.connect(_on_title_bar_input)
 	_user_panel = get_parent().get_node_or_null("UserPanel")
+	_view_panel_node = get_parent().get_node_or_null("ViewColumn")
+	_comment_panel_node = get_parent().get_node_or_null("CommentColumn")
+	_chatbot_node = get_parent().get_node_or_null("ChatbotPanel")
+	btn_view_panel.pressed.connect(_on_view_panel_btn_pressed)
+	btn_comment_panel.pressed.connect(_on_comment_panel_btn_pressed)
+	btn_chatbot.pressed.connect(_on_chatbot_btn_pressed)
+	object_list_panel.group_layer_visibility_toggled.connect(_on_group_layer_visibility_toggled)
 	btn_fit_screen.pressed.connect(_fit_screen_group)
-	stat_template_edit.text = GameManager.stat_template
-	stat_template_edit.text_changed.connect(_on_stat_template_text_changed)
+	btn_setup_screen.pressed.connect(_setup_screen_from_user)
+	btn_reset_screen.pressed.connect(_reset_screen_group)
+	btn_reset_equipment.pressed.connect(_on_reset_equipment_pressed)
+	btn_save.pressed.connect(_on_save_pressed)
+	btn_upload.pressed.connect(_on_upload_pressed)
+	btn_screen.pressed.connect(func() -> void: _set_group("screen"))
+	btn_equipment.pressed.connect(func() -> void: _set_group("equipment"))
+	btn_stat.pressed.connect(func() -> void: _set_group("stat"))
+	btn_user.pressed.connect(_on_user_btn_pressed)
+	unsaved_dialog.get_node("VBox/BtnRow/SaveBtn").pressed.connect(_on_dialog_save)
+	unsaved_dialog.get_node("VBox/BtnRow/DiscardBtn").pressed.connect(_on_dialog_discard)
+	unsaved_dialog.get_node("VBox/BtnRow/CancelBtn").pressed.connect(_on_dialog_cancel)
+	file_dialog.files_selected.connect(_on_file_dialog_files_selected)
 	transform_panel.connect("transform_changed", _on_transform_live)
+	EquipmentManager.item_purchased.connect(_on_equipment_item_purchased)
 	_set_edit_ui_visible(false)
 	_load_layout()
 	_auto_load_all_groups()
@@ -81,13 +112,12 @@ func _ready() -> void:
 func _set_edit_ui_visible(v: bool) -> void:
 	dim_overlay.visible = v
 	side_panel.visible = v
-	objects_container.visible = v
 	if not v:
 		_dragging_panel = false
 		_canvas_dragging = false
 
-func _on_stat_template_text_changed() -> void:
-	GameManager.stat_template = stat_template_edit.text
+func _on_reset_equipment_pressed() -> void:
+	EquipmentManager.reset_all()
 
 func _on_title_bar_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -95,12 +125,42 @@ func _on_title_bar_input(event: InputEvent) -> void:
 		_drag_offset = side_panel.global_position - get_viewport().get_mouse_position()
 
 func _input(event: InputEvent) -> void:
+	if _is_open and not _selected_objects.is_empty() and event is InputEventKey and event.pressed:
+		var dir := Vector2.ZERO
+		match event.keycode:
+			KEY_UP:    dir = Vector2(0.0, -1.0)
+			KEY_DOWN:  dir = Vector2(0.0,  1.0)
+			KEY_LEFT:  dir = Vector2(-1.0, 0.0)
+			KEY_RIGHT: dir = Vector2( 1.0, 0.0)
+		if dir != Vector2.ZERO:
+			var focus := get_viewport().gui_get_focus_owner()
+			if focus == null or not (focus is LineEdit):
+				if event.shift_pressed:
+					dir *= 10.0
+				if not event.echo:
+					for obj in _selected_objects:
+						if obj is EditableObjectNode and (obj as EditableObjectNode).is_group_layer():
+							_push_undo_group_transform(obj.group_id)
+						else:
+							_push_undo_transform(obj)
+				for obj in _selected_objects:
+					obj.position += dir
+					if obj is EditableObjectNode and (obj as EditableObjectNode).is_group_layer():
+						_propagate_group_layer(obj.group_id, dir, obj.size.x, obj.size.x)
+						_group_layer_prev_state[obj.group_id] = {"pos": obj.position, "size": obj.size}
+				transform_panel.refresh(_primary_selected())
+				_dirty = true
+				get_viewport().set_input_as_handled()
+				return
+
 	if _dragging_panel:
 		if event is InputEventMouseMotion:
 			var new_pos: Vector2 = get_viewport().get_mouse_position() + _drag_offset
 			var vp_size: Vector2 = get_viewport().get_visible_rect().size
-			new_pos.x = clampf(new_pos.x, 32.0 - side_panel.size.x, vp_size.x - 32.0)
-			new_pos.y = clampf(new_pos.y, 0.0, vp_size.y - 32.0)
+			var vis_w := side_panel.size.x * side_panel.scale.x
+			var vis_h := side_panel.size.y * side_panel.scale.y
+			new_pos.x = clampf(new_pos.x, 0.0, vp_size.x - vis_w)
+			new_pos.y = clampf(new_pos.y, 0.0, vp_size.y - vis_h)
 			side_panel.position = new_pos
 		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 			_dragging_panel = false
@@ -154,29 +214,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				_delete_object(obj)
 			get_viewport().set_input_as_handled()
 			return
-		if not _selected_objects.is_empty():
-			var dir := Vector2.ZERO
-			match event.keycode:
-				KEY_UP:    dir = Vector2(0.0, -1.0)
-				KEY_DOWN:  dir = Vector2(0.0,  1.0)
-				KEY_LEFT:  dir = Vector2(-1.0, 0.0)
-				KEY_RIGHT: dir = Vector2( 1.0, 0.0)
-			if dir != Vector2.ZERO:
-				if not event.echo:
-					for obj in _selected_objects:
-						if obj is EditableObjectNode and (obj as EditableObjectNode).is_group_layer():
-							_push_undo_group_transform(obj.group_id)
-						else:
-							_push_undo_transform(obj)
-				for obj in _selected_objects:
-					obj.position += dir
-					if obj is EditableObjectNode and (obj as EditableObjectNode).is_group_layer():
-						_propagate_group_layer(obj.group_id, dir, obj.size.x, obj.size.x)
-						_group_layer_prev_state[obj.group_id] = {"pos": obj.position, "size": obj.size}
-				transform_panel.refresh(_primary_selected())
-				_dirty = true
-				get_viewport().set_input_as_handled()
-				return
 
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		if not side_panel.get_global_rect().has_point(event.position):
@@ -210,10 +247,6 @@ func toggle() -> void:
 		_is_open = true
 		_set_edit_ui_visible(true)
 		_set_group(_active_group)
-		_user_editing = true
-		btn_user.button_pressed = true
-		if _user_panel and _user_panel.has_method("set_edit_mode"):
-			_user_panel.set_edit_mode(true)
 	else:
 		_request_close()
 
@@ -236,9 +269,26 @@ func _auto_load_all_groups() -> void:
 		_active_group = g
 		_auto_load_group(g)
 	_active_group = prev
-	_init_group_z_indices()
+	if _layout_loaded:
+		_pin_group_layers_to_top()
+	else:
+		_init_group_z_indices()
 	_update_object_interactivity()
 	_sort_canvas_z_order()
+
+# When layout is loaded, z_indices are already correct — only push each group
+# layer above the highest non-layer object so it doesn't block mouse picking.
+func _pin_group_layers_to_top() -> void:
+	for group in GROUPS:
+		var max_z := 0
+		for obj in _placed[group]:
+			if is_instance_valid(obj) and not obj.is_group_layer():
+				max_z = maxi(max_z, obj.z_index)
+		for obj in _placed[group]:
+			if is_instance_valid(obj) and obj.is_group_layer():
+				obj.z_index = max_z + 1
+	_undo_stack.clear()
+	_dirty = false
 
 # Assign z_indices so each group's Group Layer sits on top of its siblings.
 # Called after auto-load when the object list panel hasn't set z_indices yet.
@@ -271,9 +321,16 @@ func _ensure_group_layer(group: String) -> void:
 	var tex := _make_group_layer_texture()
 	var prev := _active_group
 	_active_group = group
-	var sz := Vector2(GROUP_LAYER_DEFAULT_SIZE, GROUP_LAYER_DEFAULT_SIZE)
+	var sz: Vector2
+	var default_pos := GROUP_LAYER_DEFAULT_POS
+	if group in ["screen", "equipment"]:
+		sz = Vector2(700.0, 390.0)
+		if group == "equipment":
+			default_pos = EQUIPMENT_FIXED_RECT.position
+	else:
+		sz = Vector2(GROUP_LAYER_DEFAULT_SIZE, GROUP_LAYER_DEFAULT_SIZE)
 	var obj := _place_object(tex, Vector2.ZERO, sz, GROUP_LAYER_MARKER, true)
-	obj.position = GROUP_LAYER_DEFAULT_POS
+	obj.position = default_pos
 	_active_group = prev
 	_group_layer_prev_state[group] = {"pos": obj.position, "size": obj.size}
 
@@ -338,20 +395,116 @@ func _on_user_btn_pressed() -> void:
 	btn_user.button_pressed = _user_editing
 	if _user_panel and _user_panel.has_method("set_edit_mode"):
 		_user_panel.set_edit_mode(_user_editing)
-	# Deactivate any active sprite group when switching to User
 	if _user_editing:
-		btn_screen.button_pressed  = false
-		btn_upgrade.button_pressed = false
-		btn_visual.button_pressed  = false
-		btn_stat.button_pressed    = false
+		btn_screen.button_pressed    = false
+		btn_equipment.button_pressed = false
+		btn_stat.button_pressed      = false
+		if _view_panel_editing:
+			_view_panel_editing = false
+			btn_view_panel.button_pressed = false
+			if _view_panel_node and _view_panel_node.has_method("set_edit_mode"):
+				_view_panel_node.set_edit_mode(false)
+		if _comment_panel_editing:
+			_comment_panel_editing = false
+			btn_comment_panel.button_pressed = false
+			if _comment_panel_node and _comment_panel_node.has_method("set_edit_mode"):
+				_comment_panel_node.set_edit_mode(false)
+
+func _on_view_panel_btn_pressed() -> void:
+	_view_panel_editing = not _view_panel_editing
+	btn_view_panel.button_pressed = _view_panel_editing
+	if _view_panel_node and _view_panel_node.has_method("set_edit_mode"):
+		_view_panel_node.set_edit_mode(_view_panel_editing)
+	if _view_panel_editing:
+		btn_screen.button_pressed    = false
+		btn_equipment.button_pressed = false
+		btn_stat.button_pressed      = false
+		if _user_editing:
+			_user_editing = false
+			btn_user.button_pressed = false
+			if _user_panel and _user_panel.has_method("set_edit_mode"):
+				_user_panel.set_edit_mode(false)
+		if _chatbot_editing:
+			_chatbot_editing = false
+			btn_chatbot.button_pressed = false
+			if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
+				_chatbot_node.set_edit_mode(false)
+		if _comment_panel_editing:
+			_comment_panel_editing = false
+			btn_comment_panel.button_pressed = false
+			if _comment_panel_node and _comment_panel_node.has_method("set_edit_mode"):
+				_comment_panel_node.set_edit_mode(false)
+
+func _on_comment_panel_btn_pressed() -> void:
+	_comment_panel_editing = not _comment_panel_editing
+	btn_comment_panel.button_pressed = _comment_panel_editing
+	if _comment_panel_node and _comment_panel_node.has_method("set_edit_mode"):
+		_comment_panel_node.set_edit_mode(_comment_panel_editing)
+	if _comment_panel_editing:
+		btn_screen.button_pressed    = false
+		btn_equipment.button_pressed = false
+		btn_stat.button_pressed      = false
+		if _user_editing:
+			_user_editing = false
+			btn_user.button_pressed = false
+			if _user_panel and _user_panel.has_method("set_edit_mode"):
+				_user_panel.set_edit_mode(false)
+		if _chatbot_editing:
+			_chatbot_editing = false
+			btn_chatbot.button_pressed = false
+			if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
+				_chatbot_node.set_edit_mode(false)
+		if _view_panel_editing:
+			_view_panel_editing = false
+			btn_view_panel.button_pressed = false
+			if _view_panel_node and _view_panel_node.has_method("set_edit_mode"):
+				_view_panel_node.set_edit_mode(false)
+
+func _on_chatbot_btn_pressed() -> void:
+	_chatbot_editing = not _chatbot_editing
+	btn_chatbot.button_pressed = _chatbot_editing
+	if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
+		_chatbot_node.set_edit_mode(_chatbot_editing)
+	if _chatbot_editing:
+		btn_screen.button_pressed    = false
+		btn_equipment.button_pressed = false
+		btn_stat.button_pressed      = false
+		if _user_editing:
+			_user_editing = false
+			btn_user.button_pressed = false
+			if _user_panel and _user_panel.has_method("set_edit_mode"):
+				_user_panel.set_edit_mode(false)
+		if _view_panel_editing:
+			_view_panel_editing = false
+			btn_view_panel.button_pressed = false
+			if _view_panel_node and _view_panel_node.has_method("set_edit_mode"):
+				_view_panel_node.set_edit_mode(false)
+		if _comment_panel_editing:
+			_comment_panel_editing = false
+			btn_comment_panel.button_pressed = false
+			if _comment_panel_node and _comment_panel_node.has_method("set_edit_mode"):
+				_comment_panel_node.set_edit_mode(false)
+
+func _on_group_layer_visibility_toggled(group_id: String, vis: bool) -> void:
+	for obj in _placed[group_id]:
+		if is_instance_valid(obj):
+			obj.layer_visible = vis
+			if not obj.is_group_layer():
+				obj.visible = vis
+	object_list_panel.update_visibility_buttons()
+	_dirty = true
 
 func _update_group_buttons() -> void:
-	btn_screen.button_pressed  = (_active_group == "screen")
-	btn_upgrade.button_pressed = (_active_group == "active")
-	btn_visual.button_pressed  = (_active_group == "passive")
-	btn_stat.button_pressed    = (_active_group == "stat")
-	btn_user.button_pressed    = false   # User is toggled independently
-	btn_fit_screen.visible     = (_active_group == "screen")
+	btn_screen.button_pressed    = (_active_group == "screen")
+	btn_equipment.button_pressed = (_active_group == "equipment")
+	btn_stat.button_pressed      = (_active_group == "stat")
+	btn_user.button_pressed        = false
+	btn_view_panel.button_pressed  = false
+	btn_comment_panel.button_pressed = false
+	btn_chatbot.button_pressed     = false
+	btn_fit_screen.visible    = (_active_group == "screen")
+	btn_setup_screen.visible  = (_active_group == "screen")
+	btn_reset_screen.visible  = (_active_group == "screen")
 	btn_delete.disabled = _selected_objects.is_empty()
 
 func _update_object_interactivity() -> void:
@@ -368,7 +521,7 @@ func _update_object_interactivity() -> void:
 			else:
 				obj.set_gameplay_mode(true)
 				var is_frame: bool = "frame" in obj.source_path.get_file().to_lower()
-				if group in ["screen", "active"] and not is_frame:
+				if group == "screen" and not is_frame:
 					obj.mouse_filter = Control.MOUSE_FILTER_STOP
 				else:
 					obj.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -407,6 +560,9 @@ func _on_canvas_object_clicked(obj: EditableObjectNode) -> void:
 		_select_objects([obj])
 		object_list_panel.select_object(obj)
 
+func _on_equipment_item_purchased(_id: String) -> void:
+	_update_object_interactivity()
+
 func _handle_gameplay_click(obj: EditableObjectNode) -> void:
 	match obj.group_id:
 		"screen":
@@ -415,18 +571,13 @@ func _handle_gameplay_click(obj: EditableObjectNode) -> void:
 			# in gameplay mode so they don't reach here at all.
 			GameManager.on_view_clicked()
 			_animate_screen_objects()
-		"active":
-			var upgrade_id := obj.source_path.get_file().get_basename().to_lower()
-			if UpgradeManager.UPGRADES.has(upgrade_id):
-				var purchased := UpgradeManager.try_purchase(upgrade_id)
-				obj.animate_upgrade_result(purchased)
 
 func _animate_screen_objects() -> void:
 	for obj in _placed["screen"]:
 		if not is_instance_valid(obj) or obj.is_group_layer():
 			continue
 		var base: String = obj.source_path.get_file().get_basename().to_lower()
-		if "frame" in base or base in ["view", "sub", "screen"]:
+		if "frame" in base or base in ["view", "sub", "screen", "base", "bg", "background"]:
 			continue
 		obj.animate_screen_click()
 
@@ -469,7 +620,13 @@ func _sort_canvas_z_order() -> void:
 		for obj in _placed[group]:
 			if is_instance_valid(obj):
 				all_objs.append(obj)
-	all_objs.sort_custom(func(a, b): return a.z_index < b.z_index)
+	# Compound key: group_index * 10000 + z_index ensures groups never overlap.
+	# GROUPS = ["stat","screen","equipment"] so equipment always renders on top.
+	all_objs.sort_custom(func(a, b):
+		var ka: int = GROUPS.find(a.group_id) * 10000 + a.z_index
+		var kb: int = GROUPS.find(b.group_id) * 10000 + b.z_index
+		return ka < kb
+	)
 	for i in all_objs.size():
 		objects_container.move_child(all_objs[i], i)
 
@@ -660,6 +817,18 @@ func _close() -> void:
 		_user_editing = false
 		if _user_panel and _user_panel.has_method("set_edit_mode"):
 			_user_panel.set_edit_mode(false)
+	if _view_panel_editing:
+		_view_panel_editing = false
+		if _view_panel_node and _view_panel_node.has_method("set_edit_mode"):
+			_view_panel_node.set_edit_mode(false)
+	if _comment_panel_editing:
+		_comment_panel_editing = false
+		if _comment_panel_node and _comment_panel_node.has_method("set_edit_mode"):
+			_comment_panel_node.set_edit_mode(false)
+	if _chatbot_editing:
+		_chatbot_editing = false
+		if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
+			_chatbot_node.set_edit_mode(false)
 	_is_open = false
 	_set_edit_ui_visible(false)
 	_pending_object = null
@@ -732,6 +901,100 @@ func _fit_screen_group() -> void:
 	transform_panel.refresh(_primary_selected())
 	_dirty = true
 
+func _setup_screen_from_user() -> void:
+	# base.png native size: 2754 × 1536 — aspect ratio drives screen width.
+	const BASE_ASPECT := 2754.0 / 1536.0
+
+	var user_rect := Rect2(20.0, 20.0, 250.0, 390.0)
+	if _user_panel and _user_panel.has_method("get_display_rect"):
+		user_rect = _user_panel.get_display_rect()
+
+	var target_h  := user_rect.size.y
+	var target_w  := target_h * BASE_ASPECT
+	var target_pos := Vector2(user_rect.position.x + user_rect.size.x + 10.0, user_rect.position.y)
+	var target_sz  := Vector2(target_w, target_h)
+
+	var objs: Array = _placed["screen"]
+
+	# Measure current bounding box of all non-group-layer objects.
+	var min_p := Vector2(INF, INF)
+	var max_p := Vector2(-INF, -INF)
+	var has_objs := false
+	for obj in objs:
+		if not is_instance_valid(obj) or obj.is_group_layer():
+			continue
+		min_p = min_p.min(obj.position)
+		max_p = max_p.max(obj.position + obj.size)
+		has_objs = true
+
+	_push_undo_group_transform("screen")
+
+	if has_objs:
+		var cur_w := max_p.x - min_p.x
+		var cur_h := max_p.y - min_p.y
+		var sx := target_sz.x / cur_w if cur_w > 0.0 else 1.0
+		var sy := target_sz.y / cur_h if cur_h > 0.0 else 1.0
+		for obj in objs:
+			if not is_instance_valid(obj) or obj.is_group_layer():
+				continue
+			var rel: Vector2 = obj.position - min_p
+			obj.position = target_pos + Vector2(rel.x * sx, rel.y * sy)
+			obj.size     = Vector2(obj.size.x * sx, obj.size.y * sy)
+			obj._sync_rect_size()
+
+	# Set Group Layer to match the target rect exactly.
+	for obj in objs:
+		if is_instance_valid(obj) and obj.is_group_layer():
+			obj.position = target_pos
+			obj.size     = target_sz
+			obj._sync_rect_size()
+			_group_layer_prev_state["screen"] = {"pos": target_pos, "size": target_sz}
+			break
+
+	if _active_group == "screen":
+		object_list_panel.refresh(_placed["screen"])
+	transform_panel.refresh(_primary_selected())
+	_dirty = true
+
+func _reset_screen_group() -> void:
+	# Remove all existing screen objects from canvas and list panel
+	for obj in _placed["screen"].duplicate():
+		if is_instance_valid(obj):
+			object_list_panel.remove_object(obj)
+			obj.queue_free()
+	_placed["screen"].clear()
+	# Drop any selected screen objects
+	var new_sel: Array = []
+	for o in _selected_objects:
+		if is_instance_valid(o) and o.group_id != "screen":
+			new_sel.append(o)
+	_selected_objects = new_sel
+	# Persist: clear screen section in layout.cfg
+	var cfg := ConfigFile.new()
+	if cfg.load(LAYOUT_PATH) == OK:
+		cfg.set_value("layout", "screen", [])
+		cfg.save(LAYOUT_PATH)
+	# Re-create a fresh Group Layer at default 700×390
+	_ensure_group_layer("screen")
+	_undo_stack.clear()
+	_dirty = false
+	if _active_group == "screen":
+		object_list_panel.set_group_label("screen")
+		object_list_panel.refresh(_placed["screen"])
+	btn_delete.disabled = _selected_objects.is_empty()
+	transform_panel.refresh(null)
+	_update_object_interactivity()
+
+func _enforce_equipment_layout() -> void:
+	for obj in _placed.get("equipment", []):
+		if not is_instance_valid(obj):
+			continue
+		obj.position = EQUIPMENT_FIXED_RECT.position
+		obj.size     = EQUIPMENT_FIXED_RECT.size
+		obj._sync_rect_size()
+		if obj.is_group_layer():
+			_group_layer_prev_state["equipment"] = {"pos": obj.position, "size": obj.size}
+
 func _load_tex(res_path: String) -> Texture2D:
 	if res_path == GROUP_LAYER_MARKER:
 		return _make_group_layer_texture()
@@ -774,3 +1037,4 @@ func _load_layout() -> void:
 	_sort_canvas_z_order()
 	_undo_stack.clear()
 	_dirty = false
+	_layout_loaded = true

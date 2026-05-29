@@ -1,9 +1,10 @@
 # mpv-bridge.ps1
-# Starts mpv with Windows named-pipe IPC, then bridges TCP → pipe.
-# Requires mpv.exe + yt-dlp.exe inside the same tools/ directory.
+# Bidirectional bridge: TCP (Godot) ↔ Windows named pipe (mpv IPC).
+# Main thread  : TCP → pipe  (commands: Godot → mpv)
+# Background RS: pipe → TCP  (events:   mpv   → Godot)
 param([int]$TcpPort = 12736)
 
-# ── Resolve paths ─────────────────────────────────────────────────────────────
+# ── Paths ──────────────────────────────────────────────────────────────────────
 $toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $toolsDir) { $toolsDir = Split-Path -Parent $PSCommandPath }
 
@@ -16,10 +17,10 @@ function Log($msg) {
     Add-Content -Path $logFile -Value "$ts  $msg" -Encoding utf8
 }
 
-Set-Content -Path $logFile -Value "" -Encoding utf8   # clear on each run
+Set-Content -Path $logFile -Value "" -Encoding utf8
 Log "=== bridge start  port=$TcpPort ==="
 
-# ── Kill any orphaned mpv from a previous session ─────────────────────────────
+# ── Kill orphaned mpv ──────────────────────────────────────────────────────────
 $old = Get-Process mpv -ErrorAction SilentlyContinue
 if ($old) {
     Log "Killing $($old.Count) orphaned mpv process(es)"
@@ -27,7 +28,7 @@ if ($old) {
     Start-Sleep -Milliseconds 400
 }
 
-# ── Launch mpv via ProcessStartInfo (precise argument control) ────────────────
+# ── Launch mpv ─────────────────────────────────────────────────────────────────
 try {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName          = $mpvExe
@@ -44,14 +45,13 @@ try {
     exit 1
 }
 
-# ── Quick sanity check ────────────────────────────────────────────────────────
 Start-Sleep -Milliseconds 1000
 if ($mpv.HasExited) {
     Log "ERROR: mpv exited immediately (ExitCode=$($mpv.ExitCode))"
     exit 1
 }
 
-# ── Connect to mpv named pipe (retry up to 12 s) ──────────────────────────────
+# ── Connect to mpv named pipe ──────────────────────────────────────────────────
 $pipe     = $null
 $deadline = [DateTime]::Now.AddSeconds(12)
 $attempts = 0
@@ -60,7 +60,9 @@ while ([DateTime]::Now -lt $deadline) {
     $p = $null
     try {
         $p = [System.IO.Pipes.NamedPipeClientStream]::new(
-            ".", $pipeName, [System.IO.Pipes.PipeDirection]::InOut)
+            ".", $pipeName,
+            [System.IO.Pipes.PipeDirection]::InOut,
+            [System.IO.Pipes.PipeOptions]::Asynchronous)
         $p.Connect(500)
         $pipe = $p
         Log "Pipe connected on attempt $attempts"
@@ -77,11 +79,14 @@ if ($null -eq $pipe) {
     exit 1
 }
 
+# Write-only wrapper for commands (Godot → mpv)
 $pipeWriter = [System.IO.StreamWriter]::new($pipe)
 $pipeWriter.AutoFlush = $true
-Log "Pipe writer ready"
+# Read-only wrapper for events (mpv → Godot); runs on background runspace
+$pipeReader = [System.IO.StreamReader]::new($pipe)
+Log "Pipe reader + writer ready"
 
-# ── TCP listener ──────────────────────────────────────────────────────────────
+# ── TCP listener ───────────────────────────────────────────────────────────────
 try {
     $listener = [System.Net.Sockets.TcpListener]::new(
         [System.Net.IPAddress]::Loopback, $TcpPort)
@@ -97,7 +102,55 @@ try {
     exit 1
 }
 
-# ── Main loop: forward TCP lines → named pipe ─────────────────────────────────
+# ── Shared state (thread-safe hashtable) ──────────────────────────────────────
+# Background runspace reads $shared.TcpStream to forward mpv events to Godot.
+$shared = [hashtable]::Synchronized(@{
+    TcpStream = $null   # set/cleared by main thread when client connects/drops
+    Stop      = $false  # main thread sets true on shutdown
+})
+
+# ── Background runspace: pipe → TCP ───────────────────────────────────────────
+$rs = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+$rs.Open()
+$rs.SessionStateProxy.SetVariable('pipeReader', $pipeReader)
+$rs.SessionStateProxy.SetVariable('shared',     $shared)
+$rs.SessionStateProxy.SetVariable('logFile',    $logFile)
+
+$bgPS = [System.Management.Automation.PowerShell]::Create()
+$bgPS.Runspace = $rs
+[void]$bgPS.AddScript({
+    function BgLog($msg) {
+        $ts = [DateTime]::Now.ToString("HH:mm:ss.fff")
+        Add-Content -Path $logFile -Value "$ts  [p>>t] $msg" -Encoding utf8
+    }
+    BgLog "started"
+    while (-not $shared.Stop) {
+        try {
+            $line = $pipeReader.ReadLine()          # blocks until mpv sends a line
+            if ($null -eq $line) { break }          # pipe closed
+            if ($line.Length -eq 0) { continue }
+            $s = $shared.TcpStream
+            if ($null -ne $s) {
+                try {
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes($line + "`n")
+                    $s.Write($bytes, 0, $bytes.Length)
+                    # BgLog $line    # uncomment for verbose event logging
+                } catch {
+                    # TCP write failed — main thread will detect the disconnect
+                }
+            }
+        } catch {
+            if (-not $shared.Stop) {
+                [System.Threading.Thread]::Sleep(5)
+            }
+        }
+    }
+    BgLog "ended"
+})
+$bgHandle = $bgPS.BeginInvoke()
+Log "Background pipe→tcp runspace started"
+
+# ── Main loop: TCP → pipe ──────────────────────────────────────────────────────
 $tcpClient = $null
 $tcpStream = $null
 $buf = [byte[]]::new(4096)
@@ -105,9 +158,11 @@ $sb  = [System.Text.StringBuilder]::new()
 
 try {
     while (-not $mpv.HasExited) {
+        # Accept new TCP client
         if ($null -eq $tcpClient -and $listener.Pending()) {
             $tcpClient = $listener.AcceptTcpClient()
             $tcpStream = $tcpClient.GetStream()
+            $shared.TcpStream = $tcpStream   # expose to background runspace
             $sb.Clear()
             Log "TCP client connected"
         }
@@ -136,6 +191,7 @@ try {
                 }
             } catch {
                 Log "TCP client disconnected: $_"
+                $shared.TcpStream = $null
                 if ($null -ne $tcpClient) { try { $tcpClient.Close() } catch {} }
                 $tcpClient = $null; $tcpStream = $null
             }
@@ -145,10 +201,16 @@ try {
     }
     Log "mpv exited"
 } finally {
+    $shared.Stop = $true
     if ($null -ne $tcpClient) { try { $tcpClient.Close() } catch {} }
     $listener.Stop()
     $pipeWriter.Close()
-    $pipe.Close()
-    if (-not $mpv.HasExited) { try { $mpv.Kill() } catch {} }
+    $pipe.Close()   # closing pipe unblocks pipeReader.ReadLine() in background RS
+    if (-not $mpv.HasExited) {
+        try { & taskkill.exe /F /T /PID $mpv.Id 2>$null } catch {}
+        try { $mpv.Kill() } catch {}
+    }
+    try { $bgPS.EndInvoke($bgHandle) } catch {}
+    $rs.Close()
     Log "=== bridge exit ==="
 }

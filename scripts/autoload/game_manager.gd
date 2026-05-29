@@ -13,6 +13,9 @@ signal stat_template_changed(template: String)
 # (e.g. unlocks, milestone triggers) that shouldn't react to display jitter.
 signal stable_views_changed(v: int)
 
+# Fired once after save data is loaded so late-initialising nodes can refresh.
+signal game_loaded
+
 # ---------------------------------------------------------------------------
 # Tunable constants
 # ---------------------------------------------------------------------------
@@ -34,7 +37,7 @@ const C_CONST: float = 0.0181
 var _subs: float = 0.0
 # View accumulator — grows only from clicks (via on_view_clicked, +click_power
 # each) and shrinks only from spend_views (tool purchases). No passive growth.
-var _passive_views: float = 0.0
+var _passive_views: float = 10000.0
 # Cached bounded-Pareto shape parameter for the donation distribution.
 # Recomputed lazily when _subs moves >10% from when it was last solved.
 var _donation_alpha: float = 5.0
@@ -53,7 +56,7 @@ var _last_cash_emitted: float = 0.0
 # Cash accumulates from Poisson donation events in _process. Modify via
 # spend_cash() or the donation tick only; direct external mutation will still
 # eventually trigger cash_changed via the next _emit_if_changed.
-var cash: float = 0.0
+var cash: float = 10000.0
 
 # Per-click view yield. Default = 1 view per click; raised by upgrades.
 var click_power: float = 1.0
@@ -66,6 +69,9 @@ var vps: float = 0.0
 # auto-click adds click_power views, so the effective view rate scales with
 # click_power upgrades.
 var auto_click_rate: float = 0.0
+
+# Total comment auto-clicks per second from comment upgrade tools.
+var comment_auto_click_rate: float = 0.0
 
 # Placeholder multiplier referenced by the {parasocial} stat template token.
 # Currently inert in the math; will be wired into sub growth by a future task.
@@ -138,6 +144,15 @@ func _process(delta: float) -> void:
 # mutated. _passive_views may go negative when the deduction exceeds what was
 # accumulated post-subs — stable_views stays consistent either way because the
 # pre-check guarantees subs + passive >= amount at the moment of purchase.
+func spend_cash(amount: float) -> bool:
+	if amount <= 0.0:
+		return true
+	if cash < amount:
+		return false
+	cash -= amount
+	_emit_steady_signals()
+	return true
+
 func spend_views(amount: int) -> bool:
 	if amount <= 0:
 		return true
@@ -288,6 +303,26 @@ func _emit_if_changed() -> void:
 func get_vps_estimate() -> float:
 	return K_SUB * (log(maxf(_subs + _passive_views, 5.0)) / log(5.0))
 
+# View/sub format: plain number up to 999 999, then Million / Billion / Trillion.
+# Examples: 12345 -> "12345", 1_280_000 -> "1.28 Million".
+func format_views(n: int) -> String:
+	if n < 1_000_000:
+		return str(n)
+	var v: float
+	var suffix: String
+	if n < 1_000_000_000:
+		v = n / 1_000_000.0;             suffix = "Million"
+	elif n < 1_000_000_000_000:
+		v = n / 1_000_000_000.0;         suffix = "Billion"
+	elif n < 1_000_000_000_000_000:
+		v = n / 1_000_000_000_000.0;     suffix = "Trillion"
+	else:
+		v = n / 1_000_000_000_000_000.0; suffix = "Quadrillion"
+	var t := "%.2f" % v
+	while t.ends_with("0"): t = t.substr(0, t.length() - 1)
+	if t.ends_with("."): t = t.substr(0, t.length() - 1)
+	return t + " " + suffix
+
 # Human-readable count: below 1000 prints as-is, otherwise scales to thousand
 # / million / billion / trillion / quadrillion with up to 2 decimal places
 # (trailing zeros and dangling decimal points trimmed).
@@ -326,6 +361,29 @@ func get_donation_rate_estimate() -> float:
 	return C_CONST * pow(maxf(_subs, 1.0), K_EXP)
 
 # ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+const SAVE_PATH := "user://game_save.cfg"
+
+func save_game() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("player", "passive_views", _passive_views)
+	cfg.set_value("player", "subs", _subs)
+	cfg.set_value("player", "cash", cash)
+	cfg.save(SAVE_PATH)
+
+func load_game() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return
+	_passive_views = cfg.get_value("player", "passive_views", _passive_views)
+	_subs          = cfg.get_value("player", "subs",          _subs)
+	cash           = cfg.get_value("player", "cash",          cash)
+	_invalidate_alpha_cache()
+	_emit_steady_signals()
+
+# ---------------------------------------------------------------------------
 # Stat template renderer (signature locked)
 # ---------------------------------------------------------------------------
 
@@ -334,15 +392,15 @@ func render_stat_template() -> String:
 	# with click_power). Truncated to int so format_count can handle it.
 	var total_vps: int = int(vps + auto_click_rate * click_power)
 	return stat_template \
-		.replace("{views}", format_count(views)) \
-		.replace("{subs}", format_count(subs)) \
+		.replace("{views}", format_views(views)) \
+		.replace("{subs}", format_views(subs)) \
 		.replace("{click_power}", str(click_power)) \
 		.replace("{parasocial}", str(parasocial)) \
 		.replace("{cash}", format_count(int(cash))) \
 		.replace("{goal}", format_count(current_goal)) \
 		.replace("{run}", str(run)) \
 		.replace("{time}", get_time_string()) \
-		.replace("{vps}", format_count(total_vps))
+		.replace("{vps}", format_views(total_vps))
 
 # ---------------------------------------------------------------------------
 # Legacy compatibility shims
@@ -360,12 +418,6 @@ var run: int = 1
 
 func get_time_string() -> String:
 	return "00:00"
-
-func spend_cash(amount: float) -> bool:
-	if cash < amount:
-		return false
-	cash -= amount
-	return true
 
 func add_non_bot_vps(_amount: float) -> void:
 	pass

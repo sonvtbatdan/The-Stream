@@ -1,8 +1,8 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/ui/upgrade/upgrade_item.gd" id="1_item"]
+[ext_resource type="Script" path="res://scripts/ui/equipment/equipment_item.gd" id="1_item"]
 
-[node name="UpgradeItem" type="Button"]
+[node name="EquipmentItem" type="Button"]
 custom_minimum_size = Vector2(0, 56)
 mouse_default_cursor_shape = 2
 text = ""
@@ -45,7 +45,7 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 12
-text = "Tool"
+text = "Item"
 
 [node name="PriceRow" type="HBoxContainer" parent="Margin/HBox/InfoVBox"]
 layout_mode = 2
@@ -57,7 +57,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_font_sizes/font_size = 10
-text = "0 views"
+text = "$0"
 
 [node name="CountLabel" type="Label" parent="Margin/HBox/InfoVBox/PriceRow"]
 unique_name_in_owner = true

@@ -25,16 +25,32 @@ var _http: HTTPRequest = null
 var _fetching := false
 var _pool: Array[Button] = []
 
-var auto_click: bool = false
-var auto_click_interval: float = 0.3
+var _comment_font: SystemFont = null
 
 var _tick := 0.0
-var _auto_tick := 0.0
+var _comment_acc: float = 0.0
 var _spawn_interval: float = 2.0
 
 func _ready() -> void:
+	_apply_style()
+	_comment_font = SystemFont.new()
+	_comment_font.font_names = PackedStringArray(["Myriad Pro"])
 	GameManager.views_changed.connect(_on_views_changed)
 	_setup_http()
+
+func _apply_style() -> void:
+	var s := StyleBoxFlat.new()
+	s.bg_color            = Color(0.06, 0.08, 0.12, 0.88)
+	s.border_width_left   = 2
+	s.border_width_right  = 2
+	s.border_width_top    = 2
+	s.border_width_bottom = 2
+	s.border_color        = Color(0.3, 0.4, 0.6, 0.9)
+	s.corner_radius_top_left     = 8
+	s.corner_radius_top_right    = 8
+	s.corner_radius_bottom_left  = 8
+	s.corner_radius_bottom_right = 8
+	add_theme_stylebox_override("panel", s)
 
 func _setup_http() -> void:
 	_http = HTTPRequest.new()
@@ -95,11 +111,13 @@ func _process(delta: float) -> void:
 		_tick = 0.0
 		_spawn_comment()
 
-	if auto_click:
-		_auto_tick += delta
-		if _auto_tick >= auto_click_interval:
-			_auto_tick = 0.0
-			_auto_dismiss_one()
+	var rate := GameManager.comment_auto_click_rate
+	if rate > 0.0:
+		_comment_acc += rate * delta
+		if _comment_acc >= 1.0:
+			var clicks := int(_comment_acc)
+			_comment_acc = fmod(_comment_acc, 1.0)
+			_auto_dismiss_n(clicks)
 
 func _spawn_comment() -> void:
 	if GameManager.views == 0:
@@ -165,6 +183,9 @@ func _configure_button(btn: Button, text: String, is_positive: bool) -> void:
 	btn.add_theme_color_override("font_hover_color", color.lightened(0.2))
 	btn.add_theme_color_override("font_pressed_color", color.darkened(0.15))
 	btn.add_theme_color_override("font_focus_color", color)
+	btn.add_theme_font_size_override("font_size", 13)
+	if _comment_font:
+		btn.add_theme_font_override("font", _comment_font)
 
 func _trim_overflow() -> void:
 	var children := comment_list.get_children()
@@ -178,12 +199,30 @@ func _start_negative_timer(btn: Button, gen: int) -> void:
 		_on_comment_pressed(btn, false)
 		GameManager.remove_subs(1)
 
-func _auto_dismiss_one() -> void:
+func _auto_dismiss_n(n: int) -> void:
+	# Collect all clickable buttons in one pass.
+	var available: Array[Button] = []
 	for child in comment_list.get_children():
 		var btn := child as Button
 		if btn and not btn.disabled:
+			available.append(btn)
+
+	# If clicks exceed what's on screen, skip tween animations (instant clear).
+	var instant := n >= available.size()
+	var to_process := mini(n, available.size())
+
+	for i in to_process:
+		var btn: Button = available[i]
+		if instant:
+			btn.disabled = true
+			if btn.get_meta("_positive", true):
+				_clicked_positive += 1
+				if _clicked_positive >= 5:
+					_clicked_positive -= 5
+					GameManager.add_bonus_subs(1)
+			_dismiss(btn, true)
+		else:
 			_on_comment_pressed(btn, btn.get_meta("_positive", true))
-			return
 
 func _on_comment_pressed(btn: Button, is_positive: bool) -> void:
 	btn.disabled = true

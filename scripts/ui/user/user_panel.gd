@@ -11,14 +11,15 @@ const HANDLE_H     := 28.0
 const PAD          := 20.0
 const BOX_SIZE     := Vector2(200.0, 200.0)
 const TODO_H       := 220.0   # must match TodoListScript.PANEL_H
-const MUSIC_H      := 255.0   # must match MusicPlayerScript.PANEL_H
+const MUSIC_H      := 200.0   # matches UserMusicPlayer.COLLAPSED_H
 
-var _root:      Panel
-var _handle:    Panel
-var _todo:      UserTodoList
-var _music:     UserMusicPlayer
-var _weather:   UserWeatherClock
-var _empty_box: Panel
+var _root:       Panel
+var _handle:     Panel
+var _todo:       UserTodoList
+var _music:      UserMusicPlayer
+var _weather:    UserWeatherClock
+var _empty_box:  Panel
+var _thumb_rect: TextureRect = null
 
 # Edit-mode drag state
 var _edit_mode  := false
@@ -39,6 +40,21 @@ func _build() -> void:
 	_root.scale = Vector2(PANEL_SCALE, PANEL_SCALE)
 	_apply_root_style()
 	add_child(_root)
+
+	# ── USER title label (always visible) ───────────────────────
+	var title_lbl := Label.new()
+	title_lbl.position = Vector2(0, 10)
+	title_lbl.size = Vector2(PANEL_W, HANDLE_H)
+	title_lbl.text = "USER"
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	title_lbl.add_theme_font_size_override("font_size", 28)
+	title_lbl.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+	title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var _gf := load("res://assets/fonts/Gameplay.ttf") as FontFile
+	if _gf:
+		title_lbl.add_theme_font_override("font", _gf)
+	_root.add_child(title_lbl)
 
 	# ── Drag handle (edit mode only) ─────────────────────────────
 	_handle = Panel.new()
@@ -61,7 +77,7 @@ func _build() -> void:
 
 	_handle.gui_input.connect(_on_handle_input)
 
-	# ── Content VBox ─────────────────────────────────────────────
+	# ── Content ──────────────────────────────────────────────────
 	var content_top: float = HANDLE_H + PAD
 
 	_todo = UserTodoList.new()
@@ -69,15 +85,11 @@ func _build() -> void:
 	_root.add_child(_todo)
 
 	var todo_bottom: float = content_top + TODO_H
+	var music_y:     float = todo_bottom + PAD
+	var music_bottom: float = music_y + MUSIC_H
+	var box_y:       float = music_bottom + PAD
 
-	_music = UserMusicPlayer.new()
-	_music.position = Vector2(PAD, todo_bottom + PAD)
-	_root.add_child(_music)
-
-	var music_bottom: float = todo_bottom + PAD + MUSIC_H
-
-	# Two 200×200 boxes side by side
-	var box_y: float = music_bottom + PAD
+	# Weather and thumbnail added FIRST so music (added last) draws on top when expanded
 	_weather = UserWeatherClock.new()
 	_weather.position = Vector2(PAD, box_y)
 	_root.add_child(_weather)
@@ -85,6 +97,23 @@ func _build() -> void:
 	_empty_box = _make_empty_box()
 	_empty_box.position = Vector2(PAD + BOX_SIZE.x + PAD, box_y)
 	_root.add_child(_empty_box)
+
+	_thumb_rect = TextureRect.new()
+	_thumb_rect.position = Vector2(4, 4)
+	_thumb_rect.size = Vector2(BOX_SIZE.x - 8, BOX_SIZE.y - 8)
+	_thumb_rect.expand_mode  = TextureRect.EXPAND_IGNORE_SIZE
+	_thumb_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_empty_box.add_child(_thumb_rect)
+
+	# Music added LAST — renders on top of weather/thumbnail when expanded
+	_music = UserMusicPlayer.new()
+	_music.position = Vector2(PAD, music_y)
+	_music.max_expanded_h = PANEL_H - music_y - PAD * 0.5
+	_root.add_child(_music)
+
+	_music.thumbnail_ready.connect(func(tex: ImageTexture) -> void:
+		if is_instance_valid(_thumb_rect):
+			_thumb_rect.texture = tex)
 
 func _apply_root_style() -> void:
 	var s := StyleBoxFlat.new()
@@ -168,6 +197,11 @@ func _save_position() -> void:
 func _load_position() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) == OK:
-		_root.position = cfg.get_value("panel", "pos", Vector2(20.0, 20.0))
+		_root.position = cfg.get_value("panel", "pos", Vector2(980.0, 8.0))
 	else:
-		_root.position = Vector2(20.0, 20.0)
+		_root.position = Vector2(980.0, 8.0)
+
+func get_display_rect() -> Rect2:
+	if _root:
+		return Rect2(_root.position, _root.size * _root.scale)
+	return Rect2(Vector2(20.0, 20.0), Vector2(PANEL_W * PANEL_SCALE, PANEL_H * PANEL_SCALE))

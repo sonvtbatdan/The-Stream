@@ -4,59 +4,287 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Godot 4.6 GDScript project — "The Stream", a Twitch-streamer idle/clicker game. Entry scene `scenes/main.tscn`. F4 toggles an in-game editor (input action `toggle_edit_mode` in `project.godot`).
+Godot 4 GDScript — "The Stream", a Twitch-streamer idle/clicker game. Entry scene: `scenes/main.tscn`. Toggle edit mode with the `toggle_edit_mode` input action (mapped in `project.godot`).
 
 ## Commands
 
-- **Run the game (headless or windowed):** `godot --path .`
-- **Parse / load check (catches GDScript errors and missing autoload refs without opening a window):** `godot --headless --check-only --path . --quit` — exit 0 means parse clean. Runtime warnings (e.g. the pre-existing missing `res://fonts/GoodOldDOS.ttf`) still print but don't affect exit code.
-- **No test suite exists.** Verification is manual via the editor (F5). When asked to verify behavior, say so explicitly rather than asserting success from a parse check alone.
-- **Shell:** Windows / PowerShell — use PowerShell syntax in shell-only flows (`$null`, `$env:VAR`, backtick continuation). Bash via the Bash tool is available for POSIX scripts.
+- **Run:** `godot --path .`
+- **Parse check (no window):** `godot --headless --check-only --path . --quit` — exit 0 = parse clean
+- **No test suite.** Verification is manual (F5 in editor). Say so explicitly rather than asserting success from a parse check alone.
+- **Shell:** Windows / PowerShell. Use PowerShell syntax (`$null`, `$env:VAR`, backtick for line continuation). Bash tool is available for POSIX scripts.
+
+---
 
 ## Architecture
 
-**Two autoloads drive game state** (`project.godot` `[autoload]`):
+### Autoloads (load order in project.godot)
 
-- `GameManager` — owns views/subs. Internal storage is `_views: float` / `_subs: float`; public `views` / `subs` are int getters. Signals `views_changed(int)` and `subs_changed(int)` fire only when the integer floor changes (debounced via `_emit_if_changed`). The active click loop is `on_view_clicked()` (adds `click_power`). Passive sub growth runs in `_process` at a log-scaled rate of views, multiplied by `parasocial`.
-- `UpgradeManager` — legacy upgrade catalog (`fanreact`, `botreact`, `algorimth`, etc.) keyed by filename basename of images in `assets/upgrade/`. Calls back into `GameManager` for cash/VPS effects.
-- `AudioManager` — sound effects.
+| Name | File | Role |
+|------|------|------|
+| `GameManager` | `scripts/autoload/game_manager.gd` | Economy: views, subs, cash, click_power, vps, auto_click_rate, comment_auto_click_rate, donations |
+| `UpgradeManager` | `scripts/autoload/upgrade_manager.gd` | UPGRADES catalog, owned counts, factory accumulator, save/load |
+| `AudioManager` | `scripts/autoload/audio_manager.gd` | Music/SFX, volume control |
+| `EquipmentManager` | `scripts/autoload/equipment_manager.gd` | Auto-scans `assets/upgrades/equipment/*.png`, cost = 20 × 1.6^index |
 
-**`GameManager` has a "Legacy compatibility shims" block** at the bottom — inert `signal cash_changed`, `var cash`, `func spend_cash`, `func apply_view_multiplier`, etc. These exist *only* to keep the still-instanced old HUD scripts (`stat_panel.gd`, `comment_panel.gd`, `upgrade_item.gd`) and `upgrade_manager.gd` from crashing at load. Delete the whole shim block when those scripts/scenes are removed or ported.
+### Main Scene (`scenes/main.tscn`)
 
-**`EditableObjectNode` (`scripts/ui/edit_mode/editable_object.gd`, `class_name`) is the central placeable Control.** Every in-canvas sprite — characters, screens, upgrades, decoration — is one of these. It carries:
-- `group_id: String` — one of `"screen" | "upgrade" | "visual" | "stat"`, matching the asset subfolder it came from
-- `source_path: String` — `res://assets/<group>/<file>.png`, also the persistence key
-- `_gameplay_mode: bool` — toggled by `set_gameplay_mode(v)`. False = edit handles visible, mouse-resize/drag enabled; True = handles hidden, clicks emit `object_clicked` for the gameplay router
+Root `Control` with these direct children:
 
-**Asset → behavior mapping is by filename basename**, not by class hierarchy. Special cases in `_handle_gameplay_input` and `_handle_gameplay_click`:
-- `group_id == "screen" && basename == "view"` → `GameManager.on_view_clicked()` + `animate_screen_click()` (this is the main click loop)
-- Other screen objects → only the surrounding-pop animation (`_animate_screen_objects`)
-- Any name containing `"frame"` → skipped from animation and made `mouse_filter = IGNORE` in gameplay mode
-- `source_path == "res://__all_upgrades__"` → synthetic control object pinned at top of upgrade-group list; resizing it propagates to every other upgrade via `_propagate_all_upgrades_size`. Texture is generated procedurally by `_make_all_upgrades_texture`; hidden in gameplay mode
+- `EditMode` — `CanvasLayer` layer=10 (`scripts/ui/edit_mode/edit_mode.gd`): drag/resize for "screen", "equipment", "stat" groups, persisted to `user://layout.cfg`
+- `UserPanel` — `CanvasLayer` layer=5 (`scripts/ui/user_panel/user_panel.gd`): PANEL_SCALE=0.5, contains TodoList, MusicPlayer, WeatherClock
+- `ToolsColumn` — `Panel` with `scripts/ui/upgrade/upgrade_list.gd`: two tabs (VIEW / COMMENT)
+- `StatPanel` — `Panel` with `scripts/ui/hud/stat_panel.gd`: stat display + action bar (SETTING, QUIT)
+- `ChatbotPanel` — `scripts/ui/chatbot/chatbot_panel.gd`: Claude API chatbot with TTS
+- `EquipmentColumn` — equipment shop UI
 
-**Edit mode (`scripts/ui/edit_mode/edit_mode.gd`, CanvasLayer at layer 10)** is the layout/spawn system. At startup:
-1. `_load_layout()` reads `user://layout.cfg` and rebuilds all placed objects
-2. `_auto_load_all_groups()` walks `assets/{screen,upgrade,visual,stat}/` and instantiates an `EditableObjectNode` for every new image not already in the layout — so dropping a PNG into an asset folder is enough to add a placeable object
+### CanvasLayer conventions
 
-**Z-index / input-order pitfall:** Godot 4 routes Control GUI input by **tree order** (later sibling wins), but renders by **`z_index`**. Without keeping them in sync, a visually-on-top object can be unclickable because an earlier sibling absorbs the click. The system handles this:
-- `object_list_panel.gd` sets `z_index` based on row position (row 0 = highest z) and emits `z_indices_changed`
-- `edit_mode._sort_canvas_z_order()` listens and calls `move_child` on every `EditableObjectNode` in `ObjectsContainer` so tree order matches `z_index` globally across all groups
-- This is also called explicitly after `_load_layout` and `_auto_load_all_groups` so initial state is correct before any user interaction
+| Layer | Used for |
+|-------|----------|
+| 5 | UserPanel |
+| 10 | EditMode overlay |
+| 100 | Settings panel (always on top, even above screen group) |
 
-**Layout persistence (`user://layout.cfg`)** stores per-group arrays of `{path, group, pos, size, z_index}`. The synthetic `res://__all_upgrades__` is persisted like any other entry; `_load_tex` recognizes the sentinel and substitutes the procedural texture on reload.
+---
 
-## Conventions
+## GameManager
 
-- **Static typing throughout** (`var x: int`, `func f() -> void:`). Type loop variables too: `for id: String in dict.keys():`.
-- **Tabs for indentation** (matches all existing files).
-- **GameManager signal contract**: `views_changed` / `subs_changed` carry `int`, never `float`. Internal accumulators are `_views: float` / `_subs: float` — call `_emit_if_changed()` after any mutation so the int signal only fires when the floor changes.
-- **`add_views(int)` and `add_bonus_subs(int)` are public bulk-grant APIs** for non-click sources (e.g. arena rewards). The view-image click goes through `on_view_clicked()` instead so `click_power` applies. Don't call `add_views(1)` from the screen-click middleman — that path was removed to avoid double-counting.
-- **Inner classes are common in GDScript here.** They can't reference the outer enum by qualified name, so cross-reference via a public helper method (e.g. `pad.is_expanded() -> bool`) rather than `pad.get("_state") != 1`.
-- **Don't auto-fix the dead HUD scripts** (`stat_panel.gd`, `comment_panel.gd`, `view_sub_bar.gd`, `upgrade_item.gd`) unless explicitly asked — they're known broken-against-clean-slate state held alive by the shims. Touching them invites scope creep into the broader pending HUD-replacement work.
-- **`.uid` files** sit next to every `.gd` and `.tscn`. Godot regenerates them on first editor load; if the implementer creates new scripts headlessly, the `.uid` may be missing and should be added in a follow-up editor session.
+### Key fields
 
-## Risky areas
+```gdscript
+var cash: float                       # earned from Poisson donation events
+var click_power: float = 1.0          # views per player click
+var vps: float = 0.0                  # views/sec from VPS upgrade tools
+var auto_click_rate: float = 0.0      # auto-clicks/sec (each × click_power views)
+var comment_auto_click_rate: float = 0.0  # auto comment dismissals/sec
+var parasocial: float = 1.0           # multiplier (future: wired to sub growth)
+var stat_template: String             # editable display template
 
-- `scripts/main.gd` references `UpgradeManager.upgrade_purchased` — if `UpgradeManager` is removed without porting `main.gd`, the project fails at load.
-- `scenes/main.tscn` still instances the legacy HUD nodes (`ViewSubBar`, `CommentPanel`, `StatPanel`, plus the per-row upgrade list). Those scripts read the shimmed APIs and display zeros; if the shims are removed, those scenes crash.
-- Adding new groups beyond `["screen", "upgrade", "visual", "stat"]` requires updating `edit_mode.gd`'s `GROUPS` const, the four toggle buttons in `edit_mode.tscn`, and the matching `assets/<group>/` folder.
+# Read-only computed getters
+var views: int        # int(_subs + _passive_views)
+var subs: int         # int(_subs)
+var stable_views: int
+var displayed_views: int
+```
+
+### Signals
+
+`views_changed(int)`, `subs_changed(int)`, `cash_changed(float)`, `stable_views_changed(int)`, `stat_template_changed(String)`, `game_loaded`
+
+`game_loaded` is emitted from `main.gd` after both `UpgradeManager.load_game()` and `GameManager.load_game()` complete — connect to it for late-initialising nodes that need loaded data.
+
+### Formatting
+
+```gdscript
+format_views(n: int) -> String   # plain integer up to 999,999; then "1.28 Million" / "Billion" etc.
+format_count(n: int) -> String   # plain below 1000; then "1 thousand" / "1 million" etc.
+render_stat_template() -> String # replaces all {tokens} in stat_template
+```
+
+**VPS display rule:** always use `format_views()` for VPS — both in StatPanel template and in the screen overlay label in `editable_object.gd`.
+
+### Stat template tokens
+
+`{views}`, `{subs}`, `{cash}`, `{click_power}`, `{parasocial}`, `{goal}`, `{run}`, `{time}`, `{vps}`
+
+---
+
+## UpgradeManager
+
+### UPGRADES const structure
+
+```gdscript
+const UPGRADES = {
+    "id": {
+        "name": "Display Name",
+        "icon": "filename.png",           # in assets/upgrades/active/
+        "cost": 100.0,                    # cash cost
+        "tab": "view",                    # "view" or "comment"
+        # one or more effect fields:
+        "vps": 1.0,                       # adds to GameManager.vps
+        "click_power": 1.0,               # adds to GameManager.click_power
+        "auto_click_rate": 1.0,           # adds to GameManager.auto_click_rate
+        "comment_click_rate": 1.0,        # adds to GameManager.comment_auto_click_rate
+        "factory": true,                  # special: see factory mechanic below
+        "desc": "Tooltip text",
+    },
+}
+```
+
+### View tab upgrades
+`fanclub`, `collaborators`, `publishers`, `agency`, `streaming_agency`, `broadcast_network`, `media_conglomerate`, `streaming_empire`, `auto_clicker` (+ more)
+
+### Comment tab upgrades
+`comment_react` ($100, +1/s), `reaction_bot` ($500, +5/s), `reaction_machine` ($10k, +50/s), `reaction_farm` ($50k, +200/s), `reaction_factory` ($500k, factory), `reaction_industry` ($2M, +1000/s), `reaction_economic_zone` ($5M, +3000/s)
+
+### Factory mechanic
+
+`reaction_factory` spawns a virtual `reaction_machine` (+50 comment_click_rate) every 5 seconds per owned factory, via `_factory_acc` float accumulator in `UpgradeManager._process()`. Persisted as `_virtual_machines: int` in `upgrades_save.cfg`.
+
+---
+
+## UI Scripts
+
+### `scripts/ui/hud/stat_panel.gd`
+
+- Displays `GameManager.render_stat_template()` in TemplateLabel
+- `_build_action_bar()`: adds HSeparator + styled mini Panel + HBox (SETTING, QUIT) below StatVBox
+- Settings overlay: CanvasLayer(layer=100, PROCESS_MODE_ALWAYS) added to `get_tree().root`
+  - ColorRect (0,0,0,0.6) with MOUSE_FILTER_STOP blocks all input to scene below
+  - Panel 310×580 with: Resolution section (720p/1080p/2K buttons), Voice section (OS TTS voices), Volume section (Music/Chatbot/SFX sliders)
+- `_open_settings()`: show overlay + `get_tree().paused = true`
+- `_close_settings()`: hide overlay + `get_tree().paused = false`
+- Escape key closes settings via `_input()`
+- StatPanel has `process_mode = PROCESS_MODE_ALWAYS` so it updates while paused
+- Saves to `user://settings.cfg` on every change
+
+### `scripts/ui/hud/comment_panel.gd`
+
+- Comment buttons in VBoxContainer, font_size=13
+- `_comment_acc: float` accumulates fractional auto-dismiss ticks from `GameManager.comment_auto_click_rate`
+- `_auto_dismiss_n(n: int)`: collects available buttons in one pass
+  - If `n >= available.size()`: instant (no tween), O(N) single pass
+  - Otherwise: animate each via `_on_comment_pressed()`
+- Every 5 positive dismissals → `GameManager.add_bonus_subs(1)`
+
+### `scripts/ui/upgrade/upgrade_list.gd`
+
+- Tab bar (VIEW / COMMENT) built at top; ScrollContainer offset_top=50 to clear it
+- `_current_tab: String` filters by `UPGRADES[id].get("tab", "view")`
+- `_switch_tab(tab)` rebuilds item list and updates button highlight colors
+
+### `scripts/ui/chatbot/chatbot_panel.gd`
+
+- Claude API streaming chatbot
+- TTS: `_tts_enabled`, `_tts_voice_id`, `_tts_volume`
+- `set_tts_voice(voice_id: String)` — called by stat_panel after voice selection
+- `set_tts_volume(vol: float)` — called by stat_panel volume slider
+- `_speak(text)` uses `DisplayServer.tts_speak(text, vid, int(vol * 100))`
+- `append_bot_message()` calls `_speak()` after displaying
+- 🔇/🔊 toggle button in input row
+
+### `scripts/ui/edit_mode/editable_object.gd`
+
+- `EditableObjectNode` (`class_name`) — every in-canvas placed sprite
+- `group_id: String` — one of `"screen" | "equipment" | "stat"`
+- `_gameplay_mode: bool` — edit handles vs gameplay click routing
+- VPS label uses `GameManager.format_views(total_vps)` (NOT format_count)
+- `group_id == "screen" && basename == "view"` → `GameManager.on_view_clicked()`
+
+---
+
+## Assets
+
+| Folder | Contents |
+|--------|----------|
+| `assets/upgrades/active/` | 48×48 PNG icons, one per upgrade id |
+| `assets/upgrades/equipment/` | Equipment icons, auto-scanned by EquipmentManager (sorted order = cost order) |
+| `assets/fonts/Gameplay.ttf` | Pixel/retro font for main UI |
+| `assets/audio/music/` | OGG Vorbis music files streamed by AudioManager |
+
+EquipmentManager cost formula: `20 * pow(1.6, sorted_index)`
+
+---
+
+## Persistence Files (`user://`)
+
+| File | Contents |
+|------|----------|
+| `game_save.cfg` | passive_views, subs, cash |
+| `upgrades_save.cfg` | owned counts per upgrade id + `factory/virtual_machines` |
+| `settings.cfg` | resolution (w, h), tts_voice, music_vol, sfx_vol, tts_vol |
+| `layout.cfg` | positions/sizes of draggable groups |
+| `equipment.cfg` | owned equipment items |
+| `user_panel.cfg` | UserPanel widget states |
+| `session.cfg` | Chatbot conversation history |
+| `audio_config.cfg` | AudioManager internal state |
+
+---
+
+## Key Patterns & Conventions
+
+### Static typing throughout
+```gdscript
+var x: int
+func f() -> void:
+for id: String in dict.keys():
+```
+
+### GDScript type inference gotcha
+Dictionary access returns `Variant`. Annotate explicitly when comparing to a typed value:
+```gdscript
+# WRONG — GDScript can't infer bool from Variant:
+var active := voices[i]["id"] == _selected_voice_id
+# CORRECT:
+var active: bool = voices[i]["id"] == _selected_voice_id
+```
+
+### Fractional accumulator (sub-integer tick rates)
+```gdscript
+_acc += rate * delta
+if _acc >= 1.0:
+    var n := int(_acc)
+    _acc = fmod(_acc, 1.0)
+    _process_n_times(n)
+```
+
+### Pause-safe UI nodes
+Any node that must remain interactive while `get_tree().paused = true`:
+```gdscript
+process_mode = Node.PROCESS_MODE_ALWAYS
+```
+Apply to: the Panel, its CanvasLayer, and all interactive children (buttons, sliders).
+
+### Settings overlay (guaranteed top layer)
+```gdscript
+# Build in _ready() deferred:
+_overlay_layer = CanvasLayer.new()
+_overlay_layer.layer = 100
+_overlay_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+get_tree().root.add_child(_overlay_layer)
+_overlay_layer.hide()
+
+# Open:
+_overlay_layer.show()
+get_tree().paused = true
+
+# Close:
+_overlay_layer.hide()
+get_tree().paused = false
+```
+CanvasLayer with high `layer` value beats any Control node's `z_index` — use layer=100 for overlays that must appear above the "screen" group.
+
+### OS TTS (Windows SAPI)
+```gdscript
+var voices := DisplayServer.tts_get_voices()  # Array of {id, name, language}
+DisplayServer.tts_speak(text, voice_id, volume_0_to_100)
+DisplayServer.tts_stop()
+DisplayServer.tts_is_speaking() -> bool
+```
+
+### Tabs for indentation (matches all existing files)
+
+---
+
+## LOCKED MODULES — DO NOT MODIFY WITHOUT EXPLICIT USER PERMISSION
+
+The following files are considered **stable and complete**. Claude must **not edit them** in any session unless the user explicitly says "bạn được phép sửa [tên file]" hoặc tương đương rõ ràng. Nếu có bug liên quan, hãy **báo cáo** thay vì tự ý sửa.
+
+| File | Lý do khoá |
+|------|-----------|
+| `scripts/ui/user/music_player.gd` | Music player widget — đã ổn định sau nhiều lần debug |
+| `scripts/ui/user/music_server.gd` | YouTube IPC client — logic kết nối mpv dễ vỡ |
+| `scripts/autoload/audio_manager.gd` | Game music manager — đã có prev/next/shuffle/loop |
+| `scripts/ui/user/user_panel.gd` | UserPanel layout — z-order và position đã được căn chỉnh |
+| `tools/mpv-bridge.ps1` | PowerShell bridge — bidirectional async pipe, cực kỳ nhạy cảm |
+
+Nếu một tác vụ yêu cầu đọc những file này để **hiểu context** thì được phép đọc. Chỉ không được **sửa** mà không có lệnh rõ ràng.
+
+---
+
+## Risky Areas
+
+- Removing autoloads without updating `main.gd` references causes load failure
+- Edit mode groups are hardcoded: `["screen", "equipment", "stat"]` — adding a new group requires updating `edit_mode.gd` GROUPS const, `edit_mode.tscn` toggle buttons, and `assets/<group>/` folder
+- `.uid` files sit next to every `.gd` and `.tscn` — Godot regenerates them on first editor open; scripts created headlessly may be missing UIDs
+- `UpgradeManager.load_game()` must run before `GameManager.load_game()` (UpgradeManager resets GameManager rate fields to 0 then re-applies owned upgrades)

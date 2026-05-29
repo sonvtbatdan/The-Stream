@@ -21,10 +21,11 @@ anchor_bottom = 1.0
 mouse_filter = 2
 
 [node name="SidePanel" type="Panel" parent="."]
-offset_left = 992.0
-offset_top = 0.0
-offset_right = 1440.0
-offset_bottom = 780.0
+offset_left = 1052.0
+offset_top = 30.0
+offset_right = 1550.0
+offset_bottom = 910.0
+scale = Vector2(0.75, 0.75)
 
 [node name="VBox" type="VBoxContainer" parent="SidePanel"]
 layout_mode = 1
@@ -67,20 +68,15 @@ layout_mode = 2
 text = "GROUP"
 horizontal_alignment = 1
 
+[node name="EquipmentBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
+layout_mode = 2
+toggle_mode = true
+text = "Equipment"
+
 [node name="ScreenBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
 layout_mode = 2
 toggle_mode = true
 text = "Screen"
-
-[node name="UpgradeBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
-layout_mode = 2
-toggle_mode = true
-text = "Active"
-
-[node name="VisualBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
-layout_mode = 2
-toggle_mode = true
-text = "Passive"
 
 [node name="StatBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
 layout_mode = 2
@@ -91,6 +87,21 @@ text = "Stat"
 layout_mode = 2
 toggle_mode = true
 text = "User"
+
+[node name="ViewPanelBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
+layout_mode = 2
+toggle_mode = true
+text = "View Panel"
+
+[node name="CommentPanelBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
+layout_mode = 2
+toggle_mode = true
+text = "Comment Panel"
+
+[node name="ChatbotBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
+layout_mode = 2
+toggle_mode = true
+text = "Chatbot"
 
 [node name="ActionSep" type="HSeparator" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
 layout_mode = 2
@@ -112,6 +123,20 @@ disabled = true
 layout_mode = 2
 text = "Fit 1440×780"
 visible = false
+
+[node name="SetupScreenBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
+layout_mode = 2
+text = "From User"
+visible = false
+
+[node name="ResetScreenBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
+layout_mode = 2
+text = "Reset Screen"
+visible = false
+
+[node name="ResetEquipmentBtn" type="Button" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
+layout_mode = 2
+text = "Reset Equipment"
 
 [node name="Spacer" type="Control" parent="SidePanel/VBox/TopHBox/ButtonsColumn"]
 layout_mode = 2
@@ -234,35 +259,6 @@ step = 1.0
 [node name="ApplyBtn" type="Button" parent="SidePanel/VBox/TransformPanel/VBox"]
 layout_mode = 2
 text = "Apply"
-
-[node name="StatInfoPanel" type="Panel" parent="SidePanel/VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 200)
-
-[node name="StatVBox" type="VBoxContainer" parent="SidePanel/VBox/StatInfoPanel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 10.0
-offset_top = 8.0
-offset_right = -10.0
-offset_bottom = -8.0
-theme_override_constants/separation = 4
-
-[node name="StatTitle" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
-layout_mode = 2
-text = "Stat Template"
-horizontal_alignment = 1
-
-[node name="HelpLabel" type="Label" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
-layout_mode = 2
-text = "{views} {subs} {vps} {click_power} {parasocial} {cash} {goal} {run} {time}"
-autowrap_mode = 3
-
-[node name="StatTemplateEdit" type="TextEdit" parent="SidePanel/VBox/StatInfoPanel/StatVBox"]
-layout_mode = 2
-size_flags_vertical = 3
 
 [node name="FileDialog" type="FileDialog" parent="."]
 title = "Upload Image"

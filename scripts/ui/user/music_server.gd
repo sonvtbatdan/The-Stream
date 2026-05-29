@@ -14,10 +14,12 @@ var _connected        := false
 var _retry_t          := 0.0
 var _total_t          := 0.0
 var _running          := false
-var _pending_url      := ""
-var _pending_playlist: Array = []
-var _fetch_thread:    Thread = null
-var _recv_buf         := ""
+var _pending_url           := ""
+var _pending_playlist:     Array = []
+var _pending_skip_first    := false
+var _playlist_skip_first   := false
+var _fetch_thread:         Thread = null
+var _recv_buf              := ""
 
 var playlist_ids:    Array = []
 var playlist_titles: Array = []
@@ -91,7 +93,10 @@ func open_video(video_id: String) -> void:
 	playlist_titles = []
 	var url := "https://www.youtube.com/watch?v=" + video_id
 	if _connected:
+		_ipc({"command": ["playlist-clear"]})
 		_ipc({"command": ["loadfile", url, "replace"]})
+		_ipc({"command": ["set_property", "pause", false]})
+		_observe_properties()
 	else:
 		_pending_url = url
 
@@ -100,18 +105,24 @@ func seek_to(pos_sec: float) -> void:
 
 func skip_to(playlist_idx: int) -> void:
 	_ipc({"command": ["set_property", "playlist-pos", playlist_idx]})
+	_ipc({"command": ["set_property", "pause", false]})
 
 func send(cmd: Dictionary) -> void:
 	match cmd.get("cmd", ""):
-		"play":   _ipc({"command": ["set_property", "pause", false]})
-		"pause":  _ipc({"command": ["set_property", "pause", true]})
-		"volume": _ipc({"command": ["set_property", "volume", float(cmd.get("v", 1.0)) * 100.0]})
-		"mute":   _ipc({"command": ["set_property", "mute", true]})
-		"unmute": _ipc({"command": ["set_property", "mute", false]})
+		"play":        _ipc({"command": ["set_property", "pause", false]})
+		"pause":       _ipc({"command": ["set_property", "pause", true]})
+		"volume":      _ipc({"command": ["set_property", "volume", float(cmd.get("v", 1.0)) * 100.0]})
+		"mute":        _ipc({"command": ["set_property", "mute", true]})
+		"unmute":      _ipc({"command": ["set_property", "mute", false]})
+		"shuffle_on":  _ipc({"command": ["set_property", "shuffle", true]})
+		"shuffle_off": _ipc({"command": ["set_property", "shuffle", false]})
+		"loop_on":     _ipc({"command": ["set_property", "loop-file", "inf"]})
+		"loop_off":    _ipc({"command": ["set_property", "loop-file", "no"]})
 
 # ── Playlist fetch ────────────────────────────────────────────────────────────
 
-func fetch_playlist_async(list_url: String) -> void:
+func fetch_playlist_async(list_url: String, skip_first: bool = false) -> void:
+	_playlist_skip_first = skip_first
 	if not _running:
 		start()
 	if not _running:
@@ -154,19 +165,30 @@ func _on_playlist_fetched(ids: Array, titles: Array) -> void:
 	playlist_ids    = ids.duplicate()
 	playlist_titles = titles.duplicate()
 	if _connected:
-		_queue_playlist(ids)
+		_queue_playlist(ids, _playlist_skip_first)
 	elif not ids.is_empty():
-		_pending_playlist = ids.duplicate()
+		_pending_playlist    = ids.duplicate()
+		_pending_skip_first  = _playlist_skip_first
 	playlist_loaded.emit(ids)
 
-func _queue_playlist(ids: Array) -> void:
+func _queue_playlist(ids: Array, skip_first: bool = false) -> void:
 	if ids.is_empty():
 		return
-	_ipc({"command": ["loadfile", "https://www.youtube.com/watch?v=" + ids[0], "replace"]})
-	for i in range(1, ids.size()):
+	var start_i := 1 if skip_first else 0
+	if not skip_first:
+		_ipc({"command": ["playlist-clear"]})
+		_ipc({"command": ["loadfile", "https://www.youtube.com/watch?v=" + ids[0], "replace"]})
+		_ipc({"command": ["set_property", "pause", false]})
+		_observe_properties()
+	for i in range(start_i, ids.size()):
 		_ipc({"command": ["loadfile", "https://www.youtube.com/watch?v=" + ids[i], "append"]})
 
 # ── IPC / TCP ─────────────────────────────────────────────────────────────────
+
+func _observe_properties() -> void:
+	_ipc({"command": ["observe_property", 1, "time-pos"]})
+	_ipc({"command": ["observe_property", 2, "duration"]})
+	_ipc({"command": ["observe_property", 3, "playlist-pos"]})
 
 func _ipc(obj: Dictionary) -> void:
 	if not _connected:
@@ -204,11 +226,20 @@ func _process(dt: float) -> void:
 				_connected = true
 				_retry_t   = 0.0
 				_total_t   = 0.0
+				_observe_properties()
 				if not _pending_playlist.is_empty():
-					_queue_playlist(_pending_playlist)
-					_pending_playlist = []
+					if _pending_skip_first and not _pending_url.is_empty():
+						_ipc({"command": ["loadfile", _pending_url, "replace"]})
+						_ipc({"command": ["set_property", "pause", false]})
+						_observe_properties()
+						_pending_url = ""
+					_queue_playlist(_pending_playlist, _pending_skip_first)
+					_pending_playlist    = []
+					_pending_skip_first  = false
 				elif not _pending_url.is_empty():
 					_ipc({"command": ["loadfile", _pending_url, "replace"]})
+					_ipc({"command": ["set_property", "pause", false]})
+					_observe_properties()
 					_pending_url = ""
 				browser_connected.emit()
 			StreamPeerTCP.STATUS_ERROR:

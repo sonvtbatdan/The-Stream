@@ -86,3 +86,28 @@ func _load() -> void:
 	for i in NUM_TASKS:
 		_checks[i].button_pressed = cfg.get_value("tasks", "check_%d" % i, false)
 		_inputs[i].text           = cfg.get_value("tasks", "text_%d"  % i, "")
+
+func add_task(text: String) -> bool:
+	for i in NUM_TASKS:
+		if _inputs[i].text.is_empty():
+			_inputs[i].text = text
+			_save()
+			return true
+	return false
+
+func set_task(index: int, text: String) -> void:
+	if index >= 0 and index < NUM_TASKS:
+		_inputs[index].text = text
+		_save()
+
+func clear_task(index: int) -> void:
+	if index >= 0 and index < NUM_TASKS:
+		_inputs[index].text = ""
+		_checks[index].button_pressed = false
+		_save()
+
+func get_tasks() -> Array[String]:
+	var result: Array[String] = []
+	for i in NUM_TASKS:
+		result.append(_inputs[i].text)
+	return result

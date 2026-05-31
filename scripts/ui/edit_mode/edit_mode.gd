@@ -1,6 +1,7 @@
 extends CanvasLayer
 
 const EditableObject := preload("res://scenes/ui/edit_mode/editable_object.tscn")
+const GifLoader      := preload("res://scripts/ui/edit_mode/gif_loader.gd")
 const LAYOUT_PATH := "res://default_layout.cfg"
 const GROUPS := ["stat", "screen", "equipment"]
 const SCREEN_FIT_W := 1440.0
@@ -17,6 +18,10 @@ const GROUP_LAYER_MARKER := "res://__group_layer__"
 const GROUP_LAYER_DEFAULT_SIZE := 120.0
 const GROUP_LAYER_DEFAULT_POS := Vector2(20.0, 20.0)
 
+# Virtual source-path prefixes for upgrade-shelf start/end markers.
+const SHELF_START_PREFIX := "res://__shelf_start_"
+const SHELF_END_PREFIX   := "res://__shelf_end_"
+
 @onready var objects_container: Control = $ObjectsContainer
 @onready var dim_overlay: ColorRect = $DimOverlay
 @onready var side_panel: Panel = $SidePanel
@@ -31,7 +36,6 @@ const GROUP_LAYER_DEFAULT_POS := Vector2(20.0, 20.0)
 @onready var btn_user: Button        = $SidePanel/VBox/TopHBox/ButtonsColumn/UserBtn
 @onready var btn_view_panel: Button    = $SidePanel/VBox/TopHBox/ButtonsColumn/ViewPanelBtn
 @onready var btn_comment_panel: Button = $SidePanel/VBox/TopHBox/ButtonsColumn/CommentPanelBtn
-@onready var btn_chatbot: Button     = $SidePanel/VBox/TopHBox/ButtonsColumn/ChatbotBtn
 @onready var btn_fit_screen: Button    = $SidePanel/VBox/TopHBox/ButtonsColumn/FitScreenBtn
 @onready var btn_setup_screen: Button  = $SidePanel/VBox/TopHBox/ButtonsColumn/SetupScreenBtn
 @onready var btn_reset_screen: Button     = $SidePanel/VBox/TopHBox/ButtonsColumn/ResetScreenBtn
@@ -48,8 +52,7 @@ var _view_panel_node: Node = null
 var _view_panel_editing := false
 var _comment_panel_node: Node = null
 var _comment_panel_editing := false
-var _chatbot_node: Node = null    # ChatbotPanel sibling node
-var _chatbot_editing := false     # whether Chatbot edit mode is active
+var _shelf_node: Node = null
 var _is_open := false
 var _dirty := false
 var _pending_object: Texture2D = null
@@ -84,10 +87,9 @@ func _ready() -> void:
 	_user_panel = get_parent().get_node_or_null("UserPanel")
 	_view_panel_node = get_parent().get_node_or_null("ViewColumn")
 	_comment_panel_node = get_parent().get_node_or_null("CommentColumn")
-	_chatbot_node = get_parent().get_node_or_null("ChatbotPanel")
+	_shelf_node = get_parent().get_node_or_null("UpgradeShelf")
 	btn_view_panel.pressed.connect(_on_view_panel_btn_pressed)
 	btn_comment_panel.pressed.connect(_on_comment_panel_btn_pressed)
-	btn_chatbot.pressed.connect(_on_chatbot_btn_pressed)
 	object_list_panel.group_layer_visibility_toggled.connect(_on_group_layer_visibility_toggled)
 	btn_fit_screen.pressed.connect(_fit_screen_group)
 	btn_setup_screen.pressed.connect(_setup_screen_from_user)
@@ -262,6 +264,8 @@ func _set_group(group: String) -> void:
 	_update_object_interactivity()
 	_pending_object = null
 	_select_objects([])
+	if _shelf_node and _shelf_node.has_method("set_edit_mode"):
+		_shelf_node.set_edit_mode(group == "stat")
 
 func _auto_load_all_groups() -> void:
 	var prev := _active_group
@@ -377,7 +381,7 @@ func _auto_load_group(group: String) -> void:
 	while file != "":
 		if not dir.current_is_dir():
 			var ext := file.get_extension().to_lower()
-			if ext in ["png", "jpg", "jpeg", "webp"]:
+			if ext in ["png", "jpg", "jpeg", "webp", "gif"]:
 				var full_path := folder + file
 				if not placed_paths.has(full_path):
 					var tex := _load_tex(full_path)
@@ -389,6 +393,44 @@ func _auto_load_group(group: String) -> void:
 						slot += 1
 		file = dir.get_next()
 	dir.list_dir_end()
+	if group == "stat":
+		_ensure_shelf_markers()
+
+## Returns the center position (in ObjectsContainer space) of a stat-group object
+## with the given source_path. Returns Vector2.ZERO if not found.
+func get_stat_object_pos(source_path: String) -> Vector2:
+	for obj in _placed.get("stat", []):
+		if is_instance_valid(obj) and obj.source_path == source_path:
+			return obj.position + obj.size * 0.5
+	return Vector2.ZERO
+
+## Ensure every upgrade type has a start and end marker in the stat group.
+## Markers are placed at default positions only if not already in the layout.
+func _ensure_shelf_markers() -> void:
+	var placed_paths: Dictionary = {}
+	for obj in _placed.get("stat", []):
+		if is_instance_valid(obj):
+			placed_paths[obj.source_path] = true
+
+	var prev_group := _active_group
+	_active_group = "stat"
+	var ids := UpgradeManager.UPGRADES.keys()
+	for i: int in ids.size():
+		var upgrade_id: String = ids[i]
+		var start_path := SHELF_START_PREFIX + upgrade_id + "__"
+		var end_path   := SHELF_END_PREFIX   + upgrade_id + "__"
+		var def_y := 445.0 + i * 20.0
+		if not placed_paths.has(start_path):
+			var tex := _load_tex(start_path)
+			if tex:
+				var obj := _place_object(tex, Vector2(290.0, def_y), Vector2(22.0, 22.0), start_path, true)
+				obj.position = Vector2(290.0, def_y)
+		if not placed_paths.has(end_path):
+			var tex := _load_tex(end_path)
+			if tex:
+				var obj := _place_object(tex, Vector2(930.0, def_y), Vector2(22.0, 22.0), end_path, true)
+				obj.position = Vector2(930.0, def_y)
+	_active_group = prev_group
 
 func _on_user_btn_pressed() -> void:
 	_user_editing = not _user_editing
@@ -424,11 +466,6 @@ func _on_view_panel_btn_pressed() -> void:
 			btn_user.button_pressed = false
 			if _user_panel and _user_panel.has_method("set_edit_mode"):
 				_user_panel.set_edit_mode(false)
-		if _chatbot_editing:
-			_chatbot_editing = false
-			btn_chatbot.button_pressed = false
-			if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
-				_chatbot_node.set_edit_mode(false)
 		if _comment_panel_editing:
 			_comment_panel_editing = false
 			btn_comment_panel.button_pressed = false
@@ -449,41 +486,11 @@ func _on_comment_panel_btn_pressed() -> void:
 			btn_user.button_pressed = false
 			if _user_panel and _user_panel.has_method("set_edit_mode"):
 				_user_panel.set_edit_mode(false)
-		if _chatbot_editing:
-			_chatbot_editing = false
-			btn_chatbot.button_pressed = false
-			if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
-				_chatbot_node.set_edit_mode(false)
 		if _view_panel_editing:
 			_view_panel_editing = false
 			btn_view_panel.button_pressed = false
 			if _view_panel_node and _view_panel_node.has_method("set_edit_mode"):
 				_view_panel_node.set_edit_mode(false)
-
-func _on_chatbot_btn_pressed() -> void:
-	_chatbot_editing = not _chatbot_editing
-	btn_chatbot.button_pressed = _chatbot_editing
-	if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
-		_chatbot_node.set_edit_mode(_chatbot_editing)
-	if _chatbot_editing:
-		btn_screen.button_pressed    = false
-		btn_equipment.button_pressed = false
-		btn_stat.button_pressed      = false
-		if _user_editing:
-			_user_editing = false
-			btn_user.button_pressed = false
-			if _user_panel and _user_panel.has_method("set_edit_mode"):
-				_user_panel.set_edit_mode(false)
-		if _view_panel_editing:
-			_view_panel_editing = false
-			btn_view_panel.button_pressed = false
-			if _view_panel_node and _view_panel_node.has_method("set_edit_mode"):
-				_view_panel_node.set_edit_mode(false)
-		if _comment_panel_editing:
-			_comment_panel_editing = false
-			btn_comment_panel.button_pressed = false
-			if _comment_panel_node and _comment_panel_node.has_method("set_edit_mode"):
-				_comment_panel_node.set_edit_mode(false)
 
 func _on_group_layer_visibility_toggled(group_id: String, vis: bool) -> void:
 	for obj in _placed[group_id]:
@@ -501,7 +508,6 @@ func _update_group_buttons() -> void:
 	btn_user.button_pressed        = false
 	btn_view_panel.button_pressed  = false
 	btn_comment_panel.button_pressed = false
-	btn_chatbot.button_pressed     = false
 	btn_fit_screen.visible    = (_active_group == "screen")
 	btn_setup_screen.visible  = (_active_group == "screen")
 	btn_reset_screen.visible  = (_active_group == "screen")
@@ -789,19 +795,26 @@ func _on_file_dialog_files_selected(paths: PackedStringArray) -> void:
 
 func _on_file_dropped(os_path: String) -> void:
 	var ext := os_path.get_extension().to_lower()
-	if ext not in ["png", "jpg", "jpeg", "webp"]:
-		return
-	var img := Image.load_from_file(os_path)
-	if img == null:
+	if ext not in ["png", "jpg", "jpeg", "webp", "gif"]:
 		return
 	var filename := os_path.get_file()
 	var dest_dir := "res://assets/" + (GROUP_FOLDERS.get(_active_group, _active_group) as String) + "/"
 	var dest_res := dest_dir + filename
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dest_dir))
-	img.save_png(ProjectSettings.globalize_path(dest_res))
-	var tex := ImageTexture.create_from_image(img)
-	_pending_object = tex
-	_pending_path = dest_res
+	if ext == "gif":
+		DirAccess.copy_absolute(os_path, ProjectSettings.globalize_path(dest_res))
+		var tex := GifLoader.load_gif(dest_res)
+		if tex == null:
+			return
+		_pending_object = tex
+		_pending_path = dest_res
+	else:
+		var img := Image.load_from_file(os_path)
+		if img == null:
+			return
+		img.save_png(ProjectSettings.globalize_path(dest_res))
+		_pending_object = ImageTexture.create_from_image(img)
+		_pending_path = dest_res
 
 # --- Open/Close ---
 
@@ -825,15 +838,13 @@ func _close() -> void:
 		_comment_panel_editing = false
 		if _comment_panel_node and _comment_panel_node.has_method("set_edit_mode"):
 			_comment_panel_node.set_edit_mode(false)
-	if _chatbot_editing:
-		_chatbot_editing = false
-		if _chatbot_node and _chatbot_node.has_method("set_edit_mode"):
-			_chatbot_node.set_edit_mode(false)
 	_is_open = false
 	_set_edit_ui_visible(false)
 	_pending_object = null
 	_select_objects([])
 	_update_object_interactivity()
+	if _shelf_node and _shelf_node.has_method("set_edit_mode"):
+		_shelf_node.set_edit_mode(false)
 
 func _on_dialog_save() -> void:
 	_save_layout()
@@ -998,6 +1009,10 @@ func _enforce_equipment_layout() -> void:
 func _load_tex(res_path: String) -> Texture2D:
 	if res_path == GROUP_LAYER_MARKER:
 		return _make_group_layer_texture()
+	if res_path.get_extension().to_lower() == "gif":
+		return GifLoader.load_gif(res_path)
+	if res_path.begins_with(SHELF_START_PREFIX) or res_path.begins_with(SHELF_END_PREFIX):
+		return _load_shelf_marker_tex(res_path)
 	var tex := load(res_path) as Texture2D
 	if tex:
 		return tex
@@ -1006,6 +1021,33 @@ func _load_tex(res_path: String) -> Texture2D:
 	if img:
 		return ImageTexture.create_from_image(img)
 	return null
+
+## Loads the upgrade icon for a shelf start/end marker path.
+## End markers are tinted red so they're visually distinct in the object list.
+func _load_shelf_marker_tex(marker_path: String) -> Texture2D:
+	var is_end := marker_path.begins_with(SHELF_END_PREFIX)
+	var prefix := SHELF_END_PREFIX if is_end else SHELF_START_PREFIX
+	var upgrade_id: String = marker_path.trim_prefix(prefix).trim_suffix("__")
+	if not UpgradeManager.UPGRADES.has(upgrade_id):
+		return null
+	var data: Dictionary = UpgradeManager.UPGRADES[upgrade_id]
+	var tab: String = data.get("tab", "view")
+	var folder: String = "res://assets/sprites/comments/" if tab == "comment" \
+	                     else "res://assets/sprites/upgrades/"
+	var icon_tex := load(folder + String(data["icon"])) as Texture2D
+	if icon_tex == null:
+		return null
+	if not is_end:
+		return icon_tex
+	var img := icon_tex.get_image()
+	if img == null:
+		return icon_tex
+	img = img.duplicate()
+	for y: int in img.get_height():
+		for x: int in img.get_width():
+			var c := img.get_pixel(x, y)
+			img.set_pixel(x, y, Color(c.r, c.g * 0.2, c.b * 0.2, c.a * 0.55))
+	return ImageTexture.create_from_image(img)
 
 func _load_layout() -> void:
 	var cfg := ConfigFile.new()
